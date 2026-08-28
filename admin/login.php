@@ -4,13 +4,18 @@ require_once __DIR__ . '/../config/settings.php';
 require_once __DIR__ . '/../config/security.php';
 
 $error = '';
+$client_ip = get_client_ip();
 
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
     header('Location: index.php');
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// 1. Verificar Rate Limiting antes de procesar intentos
+$rateLimit = check_login_rate_limit($client_ip);
+if (!$rateLimit['allowed']) {
+    $error = $rateLimit['message'];
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
         $error = 'Sesión expirada. Intentá nuevamente.';
     } else {
@@ -24,17 +29,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $admin = $stmt->fetch();
 
             if ($admin && password_verify($password, $admin['password'])) {
+                // Resetear contador de intentos fallidos
+                reset_login_rate_limit($client_ip);
+
                 session_regenerate_id(true);
                 $_SESSION['admin_logged_in'] = true;
                 $_SESSION['admin_user'] = $admin['username'];
                 $_SESSION['admin_id'] = $admin['id'];
 
-                log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión exitoso de: ' . $admin['username']);
+                log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión exitoso de: ' . $admin['username'] . ' desde IP: ' . $client_ip);
                 header('Location: index.php');
                 exit;
             } else {
+                // Registrar intento fallido
+                record_failed_login($client_ip);
                 $error = 'Usuario o contraseña incorrectos.';
-                log_audit('ADMIN_LOGIN_FAIL', 'Intento de inicio de sesión fallido para: ' . $username);
+                log_audit('ADMIN_LOGIN_FAIL', 'Intento de inicio de sesión fallido para: ' . $username . ' desde IP: ' . $client_ip);
+                
+                // Re-verificar si con este intento se superó el límite
+                $checkAgain = check_login_rate_limit($client_ip);
+                if (!$checkAgain['allowed']) {
+                    $error = $checkAgain['message'];
+                }
             }
         } else {
             $error = 'Ingresá tu usuario y contraseña.';

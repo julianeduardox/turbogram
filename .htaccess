@@ -1,0 +1,36 @@
+# ==============================================================================
+# Turbogram - Apache Security & Hardening Configuration
+# ==============================================================================
+
+# 1. Desactivar listado de directorios
+Options -Indexes
+
+# 2. Proteger archivos sensibles y de configuración
+<FilesMatch "(^\.|\.(sql|env|ini|log|bak|lock|json|md|git|sh|bat)$)">
+    Require all denied
+</FilesMatch>
+
+# 3. Proteger acceso directo a carpetas internas
+RewriteEngine On
+RewriteRule ^(config|includes|scratch)/ - [F,L]
+
+# 4. Cabeceras HTTP de Seguridad
+<IfModule mod_headers.c>
+    # Protección contra Clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Protección contra MIME Sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Filtro XSS en navegadores heredados
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Política de Referencias estricta
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Restringir permisos de hardware no necesarios
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+    # Ocultar cabeceras que delaten versión de PHP
+    Header unset X-Powered-By
+</IfModule>
