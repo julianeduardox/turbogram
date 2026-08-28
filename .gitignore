@@ -21,3 +21,8 @@ scratch/
 config/database.php
 config/database.local.php
 
+# Bases de datos y Schemas
+*.sql
+schema.sql
+
+
