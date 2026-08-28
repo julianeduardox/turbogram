@@ -20,17 +20,18 @@ if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
 }
 
 // 2. Sanitizar entradas
-$service_id = (int)($_POST['service_id'] ?? 0);
-$quantity   = (int)($_POST['quantity'] ?? 0);
-$target_link= clean_input($_POST['target_link'] ?? '');
-$buyer_email= clean_input($_POST['buyer_email'] ?? '');
-$buyer_phone= clean_input($_POST['buyer_phone'] ?? '');
+$service_id  = (int)($_POST['service_id'] ?? 0);
+$quantity    = (int)($_POST['quantity'] ?? 0);
+$target_link = clean_input($_POST['target_link'] ?? '');
+$buyer_email = clean_input($_POST['buyer_email'] ?? '');
+$buyer_phone = clean_input($_POST['buyer_phone'] ?? '');
+$raw_coupon  = strtoupper(trim(clean_input($_POST['coupon_code'] ?? '')));
 
 if ($service_id <= 0 || $quantity <= 0 || empty($target_link) || empty($buyer_email)) {
     die("Todos los campos marcados son obligatorios. Por favor volvé e ingresalos correctamente.");
 }
 
-// 3. Consultar servicio y calcular precio estricto en el Servidor
+// 3. Consultar servicio y calcular precio base estricto en el Servidor
 $pdo = Database::getConnection();
 $stmt = $pdo->prepare("SELECT * FROM services WHERE id = ? AND status = 1");
 $stmt->execute([$service_id]);
@@ -44,18 +45,55 @@ if (!$service) {
 if ($quantity < $service['min_quantity']) $quantity = $service['min_quantity'];
 if ($quantity > $service['max_quantity']) $quantity = $service['max_quantity'];
 
-// REGLA DE SEGURIDAD: Recálculo de precio en el Servidor
-$total_price = round(($quantity / 1000) * (float)$service['price_per_1000']);
-if ($total_price < 1) $total_price = 1;
+// REGLA DE SEGURIDAD: Recálculo de precio original en el Servidor
+$original_price = round(($quantity / 1000) * (float)$service['price_per_1000']);
+if ($original_price < 1) $original_price = 1;
 
-// 4. Generar Código de Orden Único
+$total_price = $original_price;
+$coupon_code = null;
+$discount_amount = 0.0;
+
+// 4. Validar Cupón de Descuento en el Servidor (si se envió)
+if (!empty($raw_coupon)) {
+    $stmtC = $pdo->prepare("SELECT * FROM coupons WHERE code = ?");
+    $stmtC->execute([$raw_coupon]);
+    $validCoupon = $stmtC->fetch();
+
+    if ($validCoupon && (int)$validCoupon['status'] === 1) {
+        $isExpired = false;
+        if (!empty($validCoupon['expires_at']) && strtotime($validCoupon['expires_at']) < time()) {
+            $isExpired = true;
+        }
+
+        $isMaxed = ((int)$validCoupon['max_uses'] > 0 && (int)$validCoupon['times_used'] >= (int)$validCoupon['max_uses']);
+        $isMinMet = ((float)$validCoupon['min_order_amount'] <= 0 || $original_price >= (float)$validCoupon['min_order_amount']);
+
+        if (!$isExpired && !$isMaxed && $isMinMet) {
+            // Calcular descuento
+            if ($validCoupon['discount_type'] === 'percentage') {
+                $discount_amount = round(($original_price * (float)$validCoupon['discount_value']) / 100);
+            } else {
+                $discount_amount = min($original_price, (float)$validCoupon['discount_value']);
+            }
+
+            $total_price = max(1, $original_price - $discount_amount);
+            $discount_amount = $original_price - $total_price;
+            $coupon_code = $validCoupon['code'];
+
+            // Incrementar contador de usos del cupón
+            $pdo->prepare("UPDATE coupons SET times_used = times_used + 1 WHERE id = ?")->execute([$validCoupon['id']]);
+        }
+    }
+}
+
+// 5. Generar Código de Orden Único
 $order_code = generate_order_code();
 
-// 5. Guardar la Orden en BD con estado pendiente
+// 6. Guardar la Orden en BD con estado pendiente
 $stmtInsert = $pdo->prepare("
     INSERT INTO orders 
-    (order_code, service_id, service_name, quantity, target_link, buyer_email, buyer_phone, total_price, mp_status, provider_status) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending_send')
+    (order_code, service_id, service_name, quantity, target_link, buyer_email, buyer_phone, total_price, original_price, coupon_code, discount_amount, mp_status, provider_status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending_send')
 ");
 $stmtInsert->execute([
     $order_code,
@@ -65,14 +103,22 @@ $stmtInsert->execute([
     $target_link,
     $buyer_email,
     $buyer_phone,
-    $total_price
+    $total_price,
+    $original_price,
+    $coupon_code,
+    $discount_amount
 ]);
 
-// 6. Generar Preferencia de Pago en Mercado Pago
+// 7. Generar Preferencia de Pago en Mercado Pago
 $mpService = new MercadoPago_Service();
+$itemTitle = 'Turbogram: ' . $service['name'] . ' (x' . number_format($quantity, 0, ',', '.') . ')';
+if ($coupon_code) {
+    $itemTitle .= " [Cupón: {$coupon_code}]";
+}
+
 $orderData = [
     'order_code'   => $order_code,
-    'service_name' => $service['name'],
+    'service_name' => $itemTitle,
     'quantity'     => $quantity,
     'total_price'  => $total_price,
     'buyer_email'  => $buyer_email,

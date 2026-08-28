@@ -94,6 +94,7 @@ if (isset($_GET['edit'])) {
             <li><a href="index.php"><i class="fa-solid fa-chart-pie"></i> Dashboard</a></li>
             <li><a href="orders.php"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php" class="active"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
+            <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>

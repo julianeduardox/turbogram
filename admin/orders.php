@@ -140,6 +140,7 @@ $orders = $stmtOrders->fetchAll();
             <li><a href="index.php"><i class="fa-solid fa-chart-pie"></i> Dashboard</a></li>
             <li><a href="orders.php" class="active"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
+            <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
@@ -221,7 +222,12 @@ $orders = $stmtOrders->fetchAll();
                                 <td style="word-break: break-all; max-width: 180px; font-size: 0.85rem; color: var(--admin-accent);">
                                     <?= htmlspecialchars($o['target_link']) ?>
                                 </td>
-                                <td style="font-weight: 700; color: #4ade80;"><?= format_price($o['total_price']) ?></td>
+                                <td style="font-weight: 700; color: #4ade80;">
+                                    <?= format_price($o['total_price']) ?>
+                                    <?php if (!empty($o['coupon_code'])): ?>
+                                        <br><span class="badge badge-purple" style="font-size: 0.75rem; margin-top: 0.2rem;" title="Descuento: <?= format_price($o['discount_amount']) ?>"><i class="fa-solid fa-tag"></i> <?= htmlspecialchars($o['coupon_code']) ?> (-<?= format_price($o['discount_amount']) ?>)</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ($o['mp_status'] === 'approved'): ?>
                                         <span class="badge badge-success">Aprobado</span>

@@ -3,12 +3,21 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/settings.php';
 require_once __DIR__ . '/config/security.php';
 
-// Obtener categorías activas
 $pdo = Database::getConnection();
+
+// 1. Obtener oferta activa con banner para la web
+$stmtBanner = $pdo->query("
+    SELECT * FROM coupons 
+    WHERE status = 1 AND show_banner = 1 AND (expires_at IS NULL OR expires_at > NOW()) 
+    ORDER BY id DESC LIMIT 1
+");
+$activePromo = $stmtBanner->fetch();
+
+// 2. Obtener categorías activas
 $stmtCats = $pdo->query("SELECT * FROM categories WHERE status = 1 ORDER BY sort_order ASC");
 $categories = $stmtCats->fetchAll();
 
-// Obtener servicios activos con datos de categoría
+// 3. Obtener servicios activos con datos de categoría
 $stmtServs = $pdo->query("
     SELECT s.*, c.name as category_name, c.platform as cat_platform 
     FROM services s 
@@ -20,6 +29,29 @@ $services = $stmtServs->fetchAll();
 
 require_once __DIR__ . '/includes/header.php';
 ?>
+
+<!-- Banner Flotante de Oferta de Tiempo Limitado -->
+<?php if ($activePromo): ?>
+    <div class="promo-banner" id="promoBanner" data-expires="<?= $activePromo['expires_at'] ? date('c', strtotime($activePromo['expires_at'])) : '' ?>">
+        <div class="container promo-banner-content">
+            <div class="promo-banner-left">
+                <span class="promo-fire-badge"><i class="fa-solid fa-bolt"></i> OFERTA</span>
+                <span class="promo-banner-text">
+                    <?= htmlspecialchars($activePromo['banner_text'] ?: $activePromo['title']) ?>
+                </span>
+            </div>
+            
+            <div class="promo-banner-right">
+                <?php if (!empty($activePromo['expires_at'])): ?>
+                    <div class="promo-countdown" id="promoCountdown" title="Tiempo restante de la oferta">
+                        <i class="fa-solid fa-stopwatch" style="color: var(--secondary);"></i>
+                        <span id="cdHours">00</span>h : <span id="cdMinutes">00</span>m : <span id="cdSeconds">00</span>s
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
 
 <!-- Hero Section -->
 <section class="hero">
@@ -134,9 +166,35 @@ require_once __DIR__ . '/includes/header.php';
                                     <span class="value" id="summaryQty">1.000</span>
                                 </div>
 
+                                <div class="summary-item" id="summaryDiscountRow" style="display: none; color: #4ade80;">
+                                    <span class="label" style="color: #4ade80;"><i class="fa-solid fa-tag"></i> Descuento (<span id="summaryCouponName"></span>):</span>
+                                    <span class="value" id="summaryDiscountAmount" style="color: #4ade80;">-$ 0</span>
+                                </div>
+
                                 <div class="price-box">
                                     <div class="price-label">Total a pagar en pesos</div>
+                                    <div class="price-original" id="priceOriginal" style="display: none;"></div>
                                     <div class="price-amount" id="priceDisplay">$ 0</div>
+                                    <div id="discountTag" style="display: none;"></div>
+                                </div>
+
+                                <!-- Sección Cupón de Descuento -->
+                                <div class="form-group" style="margin-bottom: 1.25rem;">
+                                    <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span><i class="fa-solid fa-tag" style="color: var(--primary-light);"></i> ¿Tenés un cupón de descuento?</span>
+                                        <span id="couponAppliedStatus" style="display: none; color: #4ade80; font-size: 0.8rem; font-weight: 700;"><i class="fa-solid fa-circle-check"></i> Aplicado</span>
+                                    </label>
+                                    
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <input type="text" name="coupon_code" id="couponInput" class="form-input" placeholder="Ingresá código de cupón" style="text-transform: uppercase; font-weight: 700; font-family: monospace;" value="">
+                                        <button type="button" id="btnApplyCoupon" class="preset-btn" style="padding: 0 1.25rem; font-weight: 700; white-space: nowrap;">
+                                            Aplicar
+                                        </button>
+                                        <button type="button" id="btnRemoveCoupon" class="preset-btn" style="display: none; background: rgba(239, 68, 68, 0.15); border-color: rgba(239,68,68,0.4); color: #fca5a5; padding: 0 0.85rem;" title="Quitar cupón">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div id="couponFeedback" style="display: none; font-size: 0.85rem; margin-top: 0.4rem; padding: 0.4rem 0.75rem; border-radius: var(--radius-sm);"></div>
                                 </div>
 
                                 <!-- Formulario del Cliente -->
@@ -195,9 +253,15 @@ require_once __DIR__ . '/includes/header.php';
                             <span class="label">Destinatario:</span>
                             <span class="value" id="modalTarget" style="word-break: break-all;"></span>
                         </div>
+                        
+                        <div class="summary-item" id="modalDiscountRow" style="display: none; margin-bottom: 0.5rem; color: #4ade80;">
+                            <span class="label" style="color: #4ade80;"><i class="fa-solid fa-tag"></i> Descuento (<span id="modalCouponName"></span>):</span>
+                            <span class="value" id="modalDiscountAmount" style="color: #4ade80;"></span>
+                        </div>
+
                         <div class="summary-item" style="margin-bottom: 1.5rem; font-size: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem;">
                             <span class="label">Importe Total:</span>
-                            <span class="value" id="modalPrice" style="color: var(--secondary);"></span>
+                            <span class="value" id="modalPrice" style="color: var(--secondary); font-weight: 800;"></span>
                         </div>
 
                         <div style="display: flex; gap: 1rem;">
