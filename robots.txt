@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+Allow: /assets/
+Allow: /favicon.ico
+Allow: /site.webmanifest
+Disallow: /admin/
+Disallow: /config/
+Disallow: /includes/
+Disallow: /scratch/
+
+User-agent: Googlebot-Image
+Allow: /assets/img/
+Allow: /favicon.ico
+
+User-agent: Googlebot
+Allow: /
+Allow: /assets/
+Allow: /favicon.ico
+
+Sitemap: https://turbogram.site/sitemap.xml

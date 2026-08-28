@@ -13,12 +13,19 @@ $whatsapp_num = Settings::get('whatsapp_number', '5492364321999');
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title><?= htmlspecialchars($site_name) ?> | <?= htmlspecialchars($site_tagline) ?></title>
     <meta name="description" content="Comprá seguidores, likes y vistas para Instagram, TikTok, Telegram, Twitch y WhatsApp en pesos argentinos con Mercado Pago. Entrega rápida y garantizada.">
+    <link rel="canonical" href="https://turbogram.site/">
     
-    <!-- Favicon -->
+    <!-- Favicon & Iconos Oficiales para Google Search, Chrome y Móvil -->
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
     <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="assets/img/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/img/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/img/icon-512.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/img/icon-192.png">
+    <link rel="manifest" href="site.webmanifest">
+    <meta name="theme-color" content="#8a2be2">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
