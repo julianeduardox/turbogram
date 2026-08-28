@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="turboGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8a2be2" />
+      <stop offset="100%" stop-color="#ff007a" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Rounded squircle background -->
+  <rect width="512" height="512" rx="130" fill="url(#turboGrad)" />
+  
+  <!-- Lightning Bolt Icon -->
+  <path d="M295 48 C298 48 300 50 299 53 L162 262 C160 265 162 269 166 269 L246 269 L195 458 C194 462 198 465 201 462 L350 249 C352 246 350 242 346 242 L266 242 L310 53 C311 50 309 48 305 48 Z" 
+        fill="#ffffff" 
+        stroke="#ffffff" 
+        stroke-width="12" 
+        stroke-linejoin="round" 
+        stroke-linecap="round"
+        filter="url(#glow)" />
+</svg>

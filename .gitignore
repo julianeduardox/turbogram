@@ -1,0 +1,20 @@
+# IDEs y Editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Archivos de Sistema Operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs y Temporales
+*.log
+*.tmp
+error_log
+cookie.txt
+scratch/
+
+# Entornos y Credenciales
+.env
