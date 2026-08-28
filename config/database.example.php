@@ -1,13 +1,16 @@
 <?php
 /**
- * Configuración y Conexión PDO a la Base de Datos
+ * Plantilla de Configuración de Base de Datos (Ejemplo)
  * Turbogram - Plataforma Web SMM
+ *
+ * Instrucciones para Hosting / Producción:
+ * Copia o renombra este archivo como 'database.php' y coloca las credenciales de tu hosting.
  */
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'turbogram_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_NAME', getenv('DB_NAME') ?: 'nombre_de_tu_bd');
+define('DB_USER', getenv('DB_USER') ?: 'usuario_de_tu_bd');
+define('DB_PASS', getenv('DB_PASS') ?: 'password_de_tu_bd');
 define('DB_CHARSET', 'utf8mb4');
 
 class Database {

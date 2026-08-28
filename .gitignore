@@ -18,3 +18,6 @@ scratch/
 
 # Entornos y Credenciales
 .env
+config/database.php
+config/database.local.php
+

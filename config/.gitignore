@@ -1,0 +1,4 @@
+# Ignorar archivo de conexión a la base de datos real (para no sobreescribir en hosting)
+database.php
+database.local.php
+*.local.php
