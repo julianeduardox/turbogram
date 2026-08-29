@@ -23,34 +23,38 @@ if (!$rateLimit['allowed']) {
         $password = $_POST['password'] ?? '';
 
         if ($username && $password) {
-            $pdo = Database::getConnection();
-            $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
-            $stmt->execute([$username]);
-            $admin = $stmt->fetch();
+            try {
+                $pdo = Database::getConnection();
+                $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
+                $stmt->execute([$username]);
+                $admin = $stmt->fetch();
 
-            if ($admin && password_verify($password, $admin['password'])) {
-                // Resetear contador de intentos fallidos
-                reset_login_rate_limit($client_ip);
+                if ($admin && password_verify($password, $admin['password'])) {
+                    // Resetear contador de intentos fallidos
+                    reset_login_rate_limit($client_ip);
 
-                session_regenerate_id(true);
-                $_SESSION['admin_logged_in'] = true;
-                $_SESSION['admin_user'] = $admin['username'];
-                $_SESSION['admin_id'] = $admin['id'];
+                    session_regenerate_id(true);
+                    $_SESSION['admin_logged_in'] = true;
+                    $_SESSION['admin_user'] = $admin['username'];
+                    $_SESSION['admin_id'] = $admin['id'];
 
-                log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión exitoso de: ' . $admin['username'] . ' desde IP: ' . $client_ip);
-                header('Location: index.php');
-                exit;
-            } else {
-                // Registrar intento fallido
-                record_failed_login($client_ip);
-                $error = 'Usuario o contraseña incorrectos.';
-                log_audit('ADMIN_LOGIN_FAIL', 'Intento de inicio de sesión fallido para: ' . $username . ' desde IP: ' . $client_ip);
-                
-                // Re-verificar si con este intento se superó el límite
-                $checkAgain = check_login_rate_limit($client_ip);
-                if (!$checkAgain['allowed']) {
-                    $error = $checkAgain['message'];
+                    log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión exitoso de: ' . $admin['username'] . ' desde IP: ' . $client_ip);
+                    header('Location: index.php');
+                    exit;
+                } else {
+                    // Registrar intento fallido
+                    record_failed_login($client_ip);
+                    $error = 'Usuario o contraseña incorrectos.';
+                    log_audit('ADMIN_LOGIN_FAIL', 'Intento de inicio de sesión fallido para: ' . $username . ' desde IP: ' . $client_ip);
+                    
+                    // Re-verificar si con este intento se superó el límite
+                    $checkAgain = check_login_rate_limit($client_ip);
+                    if (!$checkAgain['allowed']) {
+                        $error = $checkAgain['message'];
+                    }
                 }
+            } catch (\Throwable $e) {
+                $error = 'Error en la base de datos: ' . $e->getMessage();
             }
         } else {
             $error = 'Ingresá tu usuario y contraseña.';

@@ -119,8 +119,8 @@ function check_login_rate_limit(string $ip): array {
                 }
             }
         }
-    } catch (Exception $e) {
-        // En caso de error de BD, permitir flujo
+    } catch (\Throwable $e) {
+        // En caso de que la tabla aún no exista, permitir flujo sin error 500
     }
 
     return ['allowed' => true];
@@ -140,7 +140,7 @@ function record_failed_login(string $ip): void {
             ON DUPLICATE KEY UPDATE attempts = attempts + 1, last_attempt = NOW()
         ");
         $stmt->execute([$ip]);
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         // Silencioso
     }
 }
@@ -153,7 +153,7 @@ function reset_login_rate_limit(string $ip): void {
         require_once __DIR__ . '/database.php';
         $pdo = Database::getConnection();
         $pdo->prepare("DELETE FROM login_attempts WHERE ip_address = ?")->execute([$ip]);
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         // Silencioso
     }
 }
@@ -167,7 +167,7 @@ function log_audit(string $action, string $details = ''): void {
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare("INSERT INTO audit_logs (action, details) VALUES (?, ?)");
         $stmt->execute([$action, $details]);
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         // Silencioso
     }
 }
