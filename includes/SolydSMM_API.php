@@ -10,9 +10,9 @@ class SolydSMM_API {
     private string $api_url;
     private string $api_key;
 
-    public function __construct(?string $url = null, ?string $key = null) {
+    public function __construct(?string $key = null, ?string $url = null) {
         $this->api_url = $url ?? Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
-        $this->api_key = $key ?? Settings::get('provider_api_key', '4ca3f76aaaa9eee0be6bfef255c072f8');
+        $this->api_key = $key ?? Settings::get('provider_api_key', '');
     }
 
     /**
