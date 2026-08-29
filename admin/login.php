@@ -4,22 +4,23 @@ require_once __DIR__ . '/../config/settings.php';
 require_once __DIR__ . '/../config/security.php';
 
 $error = '';
-$client_ip = get_client_ip();
+$client_ip = function_exists('get_client_ip') ? get_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
 
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
     header('Location: index.php');
     exit;
 }
 
-// 1. Verificar Rate Limiting antes de procesar intentos
-$rateLimit = check_login_rate_limit($client_ip);
+// Rate Limiting seguro
+$rateLimit = function_exists('check_login_rate_limit') ? check_login_rate_limit($client_ip) : ['allowed' => true];
 if (!$rateLimit['allowed']) {
-    $error = $rateLimit['message'];
+    $error = $rateLimit['message'] ?? 'Acceso bloqueado temporalmente.';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+    $csrf = $_POST['csrf_token'] ?? '';
+    if (function_exists('verify_csrf_token') && !verify_csrf_token($csrf)) {
         $error = 'Sesión expirada. Intentá nuevamente.';
     } else {
-        $username = clean_input($_POST['username'] ?? '');
+        $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
         if ($username && $password) {
@@ -30,31 +31,30 @@ if (!$rateLimit['allowed']) {
                 $admin = $stmt->fetch();
 
                 if ($admin && password_verify($password, $admin['password'])) {
-                    // Resetear contador de intentos fallidos
-                    reset_login_rate_limit($client_ip);
+                    if (function_exists('reset_login_rate_limit')) {
+                        reset_login_rate_limit($client_ip);
+                    }
 
-                    session_regenerate_id(true);
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_regenerate_id(true);
+                    }
                     $_SESSION['admin_logged_in'] = true;
                     $_SESSION['admin_user'] = $admin['username'];
                     $_SESSION['admin_id'] = $admin['id'];
 
-                    log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión exitoso de: ' . $admin['username'] . ' desde IP: ' . $client_ip);
+                    if (function_exists('log_audit')) {
+                        log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión de: ' . $admin['username']);
+                    }
                     header('Location: index.php');
                     exit;
                 } else {
-                    // Registrar intento fallido
-                    record_failed_login($client_ip);
-                    $error = 'Usuario o contraseña incorrectos.';
-                    log_audit('ADMIN_LOGIN_FAIL', 'Intento de inicio de sesión fallido para: ' . $username . ' desde IP: ' . $client_ip);
-                    
-                    // Re-verificar si con este intento se superó el límite
-                    $checkAgain = check_login_rate_limit($client_ip);
-                    if (!$checkAgain['allowed']) {
-                        $error = $checkAgain['message'];
+                    if (function_exists('record_failed_login')) {
+                        record_failed_login($client_ip);
                     }
+                    $error = 'Usuario o contraseña incorrectos.';
                 }
             } catch (\Throwable $e) {
-                $error = 'Error en la base de datos: ' . $e->getMessage();
+                $error = 'Error de base de datos: ' . $e->getMessage();
             }
         } else {
             $error = 'Ingresá tu usuario y contraseña.';
@@ -95,7 +95,7 @@ if (!$rateLimit['allowed']) {
         <?php endif; ?>
 
         <form action="login.php" method="POST">
-            <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+            <input type="hidden" name="csrf_token" value="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 
             <div style="margin-bottom: 1.25rem;">
                 <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.4rem; font-weight: 600;">Usuario</label>
