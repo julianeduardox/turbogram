@@ -94,6 +94,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php foreach ($categories as $index => $cat): ?>
                                 <button type="button" 
                                         class="category-btn <?= $index === 0 ? 'active' : '' ?>" 
+                                        data-category-id="<?= $cat['id'] ?>"
                                         data-platform="<?= htmlspecialchars($cat['platform']) ?>">
                                     <i class="<?= htmlspecialchars($cat['icon']) ?>"></i>
                                     <span><?= htmlspecialchars($cat['name']) ?></span>
@@ -108,6 +109,7 @@ require_once __DIR__ . '/includes/header.php';
                         <select name="service_id" id="serviceSelect" class="service-select">
                             <?php foreach ($services as $serv): ?>
                                 <option value="<?= $serv['id'] ?>"
+                                        data-category-id="<?= $serv['category_id'] ?>"
                                         data-platform="<?= htmlspecialchars($serv['cat_platform']) ?>"
                                         data-category="<?= htmlspecialchars($serv['category_name']) ?>"
                                         data-name="<?= htmlspecialchars($serv['name']) ?>"

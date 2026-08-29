@@ -75,13 +75,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Actualiza las opciones del selector de servicios según la categoría activa
+     * Actualiza las opciones del selector de servicios según la categoría activa (por ID de categoría)
      */
-    function filterServicesByCategory(platform) {
+    function filterServicesByCategory(categoryId, platform) {
         let firstSelectable = null;
         Array.from(serviceSelect.options).forEach(opt => {
+            const optCatId = opt.dataset.categoryId;
             const optPlatform = opt.dataset.platform;
-            if (!platform || optPlatform === platform) {
+
+            // Filtrar por ID de categoría específico (Seguidores vs Likes vs TikTok, etc.)
+            let matches = false;
+            if (categoryId) {
+                matches = (optCatId == categoryId);
+            } else if (platform) {
+                matches = (optPlatform === platform);
+            } else {
+                matches = true;
+            }
+
+            if (matches) {
                 opt.style.display = 'block';
                 if (!firstSelectable) firstSelectable = opt;
             } else {
@@ -360,8 +372,9 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.addEventListener('click', function () {
             categoryBtns.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
+            const categoryId = this.dataset.categoryId;
             const platform = this.dataset.platform;
-            filterServicesByCategory(platform);
+            filterServicesByCategory(categoryId, platform);
         });
     });
 
@@ -515,6 +528,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Inicializar primera carga
-    updateServiceDetails();
+    // Inicializar primera carga con la categoría activa
+    const initialActiveBtn = document.querySelector('.category-btn.active');
+    if (initialActiveBtn) {
+        filterServicesByCategory(initialActiveBtn.dataset.categoryId, initialActiveBtn.dataset.platform);
+    } else {
+        updateServiceDetails();
+    }
 });
