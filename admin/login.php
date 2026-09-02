@@ -75,11 +75,11 @@ if (!$rateLimit['allowed']) {
     <link rel="apple-touch-icon" sizes="192x192" href="../assets/img/icon-192.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/admin.css">
+    <link rel="stylesheet" href="../assets/css/admin.css?v=<?= time() ?>">
 </head>
-<body class="admin-body" style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
+<body class="admin-body" style="display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1.25rem;">
 
-    <div style="background: var(--admin-card); border: 1px solid var(--admin-border); border-radius: 16px; width: 100%; max-width: 400px; padding: 2.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+    <div style="background: var(--admin-card); border: 1px solid var(--admin-border); border-radius: 16px; width: 100%; max-width: 400px; padding: 2rem 1.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
         <div style="text-align: center; margin-bottom: 2rem;">
             <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #8a2be2, #ff007a); border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #fff; margin-bottom: 1rem;">
                 <i class="fa-solid fa-user-shield"></i>

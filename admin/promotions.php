@@ -146,7 +146,7 @@ $coupons = $stmtAll->fetchAll();
     <link rel="apple-touch-icon" sizes="192x192" href="../assets/img/icon-192.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/admin.css">
+    <link rel="stylesheet" href="../assets/css/admin.css?v=<?= time() ?>">
     <style>
         .generator-pill {
             background: rgba(138, 43, 226, 0.15);
