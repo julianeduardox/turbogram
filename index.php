@@ -181,14 +181,14 @@ require_once __DIR__ . '/includes/header.php';
                                 </div>
 
                                 <!-- Sección Cupón de Descuento -->
-                                <div class="form-group" style="margin-bottom: 1.25rem;">
+                                <div class="form-group">
                                     <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
                                         <span><i class="fa-solid fa-tag" style="color: var(--primary-light);"></i> ¿Tenés un cupón de descuento?</span>
                                         <span id="couponAppliedStatus" style="display: none; color: #4ade80; font-size: 0.8rem; font-weight: 700;"><i class="fa-solid fa-circle-check"></i> Aplicado</span>
                                     </label>
                                     
-                                    <div style="display: flex; gap: 0.5rem;">
-                                        <input type="text" name="coupon_code" id="couponInput" class="form-input" placeholder="Ingresá código de cupón" style="text-transform: uppercase; font-weight: 700; font-family: monospace;" value="">
+                                    <div class="coupon-row">
+                                        <input type="text" name="coupon_code" id="couponInput" class="form-input" placeholder="Ingresá código" style="text-transform: uppercase; font-weight: 700; font-family: monospace;" value="">
                                         <button type="button" id="btnApplyCoupon" class="preset-btn" style="padding: 0 1.25rem; font-weight: 700; white-space: nowrap;">
                                             Aplicar
                                         </button>
@@ -261,14 +261,14 @@ require_once __DIR__ . '/includes/header.php';
                             <span class="value" id="modalDiscountAmount" style="color: #4ade80;"></span>
                         </div>
 
-                        <div class="summary-item" style="margin-bottom: 1.5rem; font-size: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem;">
+                        <div class="summary-item" style="margin-bottom: 1.25rem; font-size: 1.1rem; border-top: 1px solid var(--border-color); padding-top: 0.6rem;">
                             <span class="label">Importe Total:</span>
                             <span class="value" id="modalPrice" style="color: var(--secondary); font-weight: 800;"></span>
                         </div>
 
-                        <div style="display: flex; gap: 1rem;">
-                            <button type="button" class="preset-btn" id="btnCancelConfirm" style="flex: 1; padding: 0.9rem; font-size: 0.95rem;">Corregir Datos</button>
-                            <button type="button" class="btn-submit-order" id="btnConfirmPay" style="flex: 1.5; padding: 0.9rem; font-size: 0.95rem;">
+                        <div class="modal-actions">
+                            <button type="button" class="preset-btn" id="btnCancelConfirm" style="flex: 1; padding: 0.85rem; font-size: 0.95rem;">Corregir Datos</button>
+                            <button type="button" class="btn-submit-order" id="btnConfirmPay" style="flex: 1.5; padding: 0.85rem; font-size: 0.95rem;">
                                 <i class="fa-solid fa-shield-halved"></i> Pagar en Mercado Pago
                             </button>
                         </div>
@@ -280,55 +280,57 @@ require_once __DIR__ . '/includes/header.php';
 </section>
 
 <!-- Sección Cómo Funciona -->
-<section class="hero" id="como-funciona" style="background: rgba(19, 21, 34, 0.4); padding: 4rem 0;">
+<section class="section-how" id="como-funciona">
     <div class="container">
-        <h2 style="font-family: var(--font-heading); font-size: 2.2rem; margin-bottom: 3rem;">
+        <h2 class="section-title">
             ¿Cómo funciona <span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Turbogram</span>?
         </h2>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem; text-align: left;">
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 2rem; border-radius: var(--radius-md);">
-                <div style="width: 50px; height: 50px; background: var(--gradient-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #fff; font-weight: 800; margin-bottom: 1rem;">1</div>
-                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Seleccioná tu servicio</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem;">Elegí la red social, el paquete y ajustá la cantidad exacta con la calculadora en tiempo real.</p>
+        <div class="steps-grid">
+            <div class="step-item-card">
+                <div class="step-number-icon">1</div>
+                <h3 class="step-item-title">Seleccioná tu servicio</h3>
+                <p class="step-item-desc">Elegí la red social, el paquete y ajustá la cantidad exacta con la calculadora en tiempo real.</p>
             </div>
 
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 2rem; border-radius: var(--radius-md);">
-                <div style="width: 50px; height: 50px; background: var(--gradient-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #fff; font-weight: 800; margin-bottom: 1rem;">2</div>
-                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Ingresá tu usuario</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem;">Solo necesitamos tu enlace o @usuario. Nunca te pediremos contraseñas ni claves de acceso.</p>
+            <div class="step-item-card">
+                <div class="step-number-icon">2</div>
+                <h3 class="step-item-title">Ingresá tu usuario</h3>
+                <p class="step-item-desc">Solo necesitamos tu enlace o @usuario. Nunca te pediremos contraseñas ni claves de acceso.</p>
             </div>
 
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 2rem; border-radius: var(--radius-md);">
-                <div style="width: 50px; height: 50px; background: var(--gradient-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #fff; font-weight: 800; margin-bottom: 1rem;">3</div>
-                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Recibí tus resultados</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem;">Aceptás el pago mediante Mercado Pago y el sistema procesa tu pedido en minutos.</p>
+            <div class="step-item-card">
+                <div class="step-number-icon">3</div>
+                <h3 class="step-item-title">Recibí tus resultados</h3>
+                <p class="step-item-desc">Aceptás el pago mediante Mercado Pago y el sistema procesa tu pedido de forma automática en minutos.</p>
             </div>
         </div>
     </div>
 </section>
 
 <!-- Sección FAQ / Preguntas Frecuentes -->
-<section class="container" id="faq" style="padding: 4rem 1.25rem;">
-    <h2 style="font-family: var(--font-heading); font-size: 2.2rem; text-align: center; margin-bottom: 2.5rem;">
-        Preguntas <span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Frecuentes</span>
-    </h2>
+<section class="faq-section" id="faq">
+    <div class="container">
+        <h2 class="section-title">
+            Preguntas <span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Frecuentes</span>
+        </h2>
 
-    <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem;">
-        <details style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; cursor: pointer;">
-            <summary style="font-weight: 700; font-size: 1.05rem; color: #fff;"><i class="fa-solid fa-lock" style="color: var(--primary-light); margin-right: 0.5rem;"></i> ¿Necesitan mi contraseña de Instagram o TikTok?</summary>
-            <p style="color: var(--text-muted); margin-top: 0.75rem; font-size: 0.95rem;">Jamás. Solo requerimos tu enlace público o nombre de usuario para enviar el servicio. Nunca entregues contraseñas en ningún sitio web.</p>
-        </details>
+        <div class="faq-list">
+            <details class="faq-item">
+                <summary class="faq-question"><i class="fa-solid fa-lock"></i> ¿Necesitan mi contraseña de Instagram o TikTok?</summary>
+                <p class="faq-answer">Jamás. Solo requerimos tu enlace público o nombre de usuario para enviar el servicio. Nunca entregues contraseñas en ningún sitio web.</p>
+            </details>
 
-        <details style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; cursor: pointer;">
-            <summary style="font-weight: 700; font-size: 1.05rem; color: #fff;"><i class="fa-solid fa-clock" style="color: var(--primary-light); margin-right: 0.5rem;"></i> ¿Cuánto tarda en llegar mi pedido?</summary>
-            <p style="color: var(--text-muted); margin-top: 0.75rem; font-size: 0.95rem;">Una vez acreditado tu pago por Mercado Pago, la solicitud se envía automáticamente. La mayoría de los servicios comienzan en 5 a 30 minutos.</p>
-        </details>
+            <details class="faq-item">
+                <summary class="faq-question"><i class="fa-solid fa-clock"></i> ¿Cuánto tarda en llegar mi pedido?</summary>
+                <p class="faq-answer">Una vez acreditado tu pago por Mercado Pago, la solicitud se envía automáticamente. La mayoría de los servicios comienzan en 5 a 30 minutos.</p>
+            </details>
 
-        <details style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; cursor: pointer;">
-            <summary style="font-weight: 700; font-size: 1.05rem; color: #fff;"><i class="fa-solid fa-wallet" style="color: var(--primary-light); margin-right: 0.5rem;"></i> ¿Qué medios de pago aceptan?</summary>
-            <p style="color: var(--text-muted); margin-top: 0.75rem; font-size: 0.95rem;">Aceptamos Mercado Pago, dinero en cuenta, tarjetas de débito/crédito, y transferencias bancarias en pesos argentinos.</p>
-        </details>
+            <details class="faq-item">
+                <summary class="faq-question"><i class="fa-solid fa-wallet"></i> ¿Qué medios de pago aceptan?</summary>
+                <p class="faq-answer">Aceptamos Mercado Pago, dinero en cuenta, tarjetas de débito/crédito y transferencias bancarias en pesos argentinos.</p>
+            </details>
+        </div>
     </div>
 </section>
 

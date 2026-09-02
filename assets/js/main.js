@@ -1,12 +1,107 @@
 /**
  * Turbogram - JS Interactive Engine
- * Manejo de calculadora en vivo, cupones de descuento, banners con cuenta regresiva,
- * filtros de categoría, sliders y modales de confirmación.
+ * Manejo de navegación móvil responsiva, calculadora en vivo, cupones de descuento,
+ * banners con cuenta regresiva, filtros de categoría, sliders y modales de confirmación.
  */
 
 document.addEventListener('DOMContentLoaded', function () {
-    const categoryBtns = document.querySelectorAll('.category-btn');
+    // ==========================================================================
+    // 1. Navegación Móvil y Menú Hamburguesa
+    // ==========================================================================
+    const menuToggle = document.getElementById('menuToggle');
+    const navMenu = document.getElementById('navMenu');
+    const navOverlay = document.getElementById('navOverlay');
+
+    function toggleMobileMenu(forceState) {
+        if (!navMenu || !menuToggle) return;
+        const willOpen = (typeof forceState === 'boolean') ? forceState : !navMenu.classList.contains('active');
+
+        if (willOpen) {
+            navMenu.classList.add('active');
+            menuToggle.classList.add('active');
+            menuToggle.setAttribute('aria-expanded', 'true');
+            menuToggle.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            if (navOverlay) navOverlay.classList.add('active');
+            document.body.classList.add('menu-open');
+        } else {
+            navMenu.classList.remove('active');
+            menuToggle.classList.remove('active');
+            menuToggle.setAttribute('aria-expanded', 'false');
+            menuToggle.innerHTML = '<i class="fa-solid fa-bars"></i>';
+            if (navOverlay) navOverlay.classList.remove('active');
+            document.body.classList.remove('menu-open');
+        }
+    }
+
+    if (menuToggle) {
+        menuToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            toggleMobileMenu();
+        });
+    }
+
+    if (navOverlay) {
+        navOverlay.addEventListener('click', function () {
+            toggleMobileMenu(false);
+        });
+    }
+
+    // Auto-cerrar menú al hacer clic en enlaces de navegación
+    if (navMenu) {
+        navMenu.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function () {
+                toggleMobileMenu(false);
+            });
+        });
+    }
+
+    // Cerrar menú con la tecla Escape
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            toggleMobileMenu(false);
+        }
+    });
+
+    // ==========================================================================
+    // 2. Banner de Oferta y Cuenta Regresiva
+    // ==========================================================================
+    const promoBanner = document.getElementById('promoBanner');
+    const cdHours = document.getElementById('cdHours');
+    const cdMinutes = document.getElementById('cdMinutes');
+    const cdSeconds = document.getElementById('cdSeconds');
+
+    if (promoBanner && promoBanner.dataset.expires) {
+        const expiresTime = new Date(promoBanner.dataset.expires).getTime();
+
+        function updateCountdown() {
+            const now = new Date().getTime();
+            const distance = expiresTime - now;
+
+            if (distance <= 0) {
+                if (promoBanner) promoBanner.style.display = 'none';
+                return;
+            }
+
+            const hours = Math.floor(distance / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            if (cdHours) cdHours.textContent = hours < 10 ? '0' + hours : hours;
+            if (cdMinutes) cdMinutes.textContent = minutes < 10 ? '0' + minutes : minutes;
+            if (cdSeconds) cdSeconds.textContent = seconds < 10 ? '0' + seconds : seconds;
+        }
+
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+    }
+
+    // ==========================================================================
+    // 3. Calculadora de Servicios y Personalizador Interactivo
+    // ==========================================================================
     const serviceSelect = document.getElementById('serviceSelect');
+    if (!serviceSelect) return; // Si la página actual no tiene calculadora, finaliza acá
+
+    const categoryBtns = document.querySelectorAll('.category-btn');
     const qtySlider = document.getElementById('qtySlider');
     const qtyInput = document.getElementById('qtyInput');
     const presetBtns = document.querySelectorAll('.preset-btn');
@@ -30,12 +125,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const couponFeedback = document.getElementById('couponFeedback');
     const couponAppliedStatus = document.getElementById('couponAppliedStatus');
 
-    // Elementos del Banner de Oferta
-    const promoBanner = document.getElementById('promoBanner');
-    const cdHours = document.getElementById('cdHours');
-    const cdMinutes = document.getElementById('cdMinutes');
-    const cdSeconds = document.getElementById('cdSeconds');
-
     // Modales
     const orderForm = document.getElementById('orderForm');
     const confirmModal = document.getElementById('confirmModal');
@@ -48,10 +137,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Estado del Cupón
     let appliedCoupon = null;
 
-    if (!serviceSelect) return;
-
     /**
-     * Formatea un número según la Regla 9: sin decimales y con punto como separador de miles.
+     * Formatea un número según la moneda argentina: sin decimales y con punto como separador de miles.
      * Ejemplo: 1500 -> "$ 1.500"
      */
     function formatMoney(amount) {
@@ -75,7 +162,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /**
-     * Actualiza las opciones del selector de servicios según la categoría activa (por ID de categoría)
+     * Actualiza las opciones del selector de servicios según la categoría activa
      */
     function filterServicesByCategory(categoryId, platform) {
         let firstSelectable = null;
@@ -83,7 +170,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const optCatId = opt.dataset.categoryId;
             const optPlatform = opt.dataset.platform;
 
-            // Filtrar por ID de categoría específico (Seguidores vs Likes vs TikTok, etc.)
             let matches = false;
             if (categoryId) {
                 matches = (optCatId == categoryId);
@@ -341,32 +427,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Cuenta regresiva del Banner (si tiene vencimiento)
-    if (promoBanner && promoBanner.dataset.expires) {
-        const expiresTime = new Date(promoBanner.dataset.expires).getTime();
-
-        function updateCountdown() {
-            const now = new Date().getTime();
-            const distance = expiresTime - now;
-
-            if (distance <= 0) {
-                if (promoBanner) promoBanner.style.display = 'none';
-                return;
-            }
-
-            const hours = Math.floor(distance / (1000 * 60 * 60));
-            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-            if (cdHours) cdHours.textContent = hours < 10 ? '0' + hours : hours;
-            if (cdMinutes) cdMinutes.textContent = minutes < 10 ? '0' + minutes : minutes;
-            if (cdSeconds) cdSeconds.textContent = seconds < 10 ? '0' + seconds : seconds;
-        }
-
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
-    }
-
     // Eventos de Categoría
     categoryBtns.forEach(btn => {
         btn.addEventListener('click', function () {
@@ -520,13 +580,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
-
-    // Cerrar modal con la tecla Escape
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && confirmModal && confirmModal.style.display === 'flex') {
-            confirmModal.style.display = 'none';
-        }
-    });
 
     // Inicializar primera carga con la categoría activa
     const initialActiveBtn = document.querySelector('.category-btn.active');

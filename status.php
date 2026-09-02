@@ -100,20 +100,20 @@ if (!empty($order_code)) {
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<div class="container" style="padding: 3rem 1.25rem; min-height: 70vh;">
+<div class="container status-page-wrap">
     
     <!-- Formulario de Búsqueda -->
     <div style="max-width: 600px; margin: 0 auto 2.5rem auto; text-align: center;">
-        <h1 style="font-family: var(--font-heading); font-size: 2rem; margin-bottom: 0.75rem;">
+        <h1 style="font-family: var(--font-heading); font-size: clamp(1.6rem, 5vw, 2.2rem); margin-bottom: 0.75rem;">
             Consultar <span style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Estado de Pedido</span>
         </h1>
         <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
             Ingresá tu número único de pedido (ej: <code>TURBO-8F92A1</code>) para conocer el progreso en tiempo real.
         </p>
 
-        <form action="status.php" method="GET" style="display: flex; gap: 0.5rem;">
-            <input type="text" name="code" class="form-input" placeholder="Código de pedido (ej: TURBO-XXXXXX)" value="<?= htmlspecialchars($order_code) ?>" required style="text-transform: uppercase;">
-            <button type="submit" class="btn-submit-order" style="width: auto; padding: 0 1.5rem;">
+        <form action="status.php" method="GET" class="status-search-form">
+            <input type="text" name="code" class="form-input" placeholder="Código (ej: TURBO-XXXXXX)" value="<?= htmlspecialchars($order_code) ?>" required style="text-transform: uppercase;">
+            <button type="submit" class="btn-submit-order" style="width: auto; padding: 0 1.5rem; white-space: nowrap;">
                 <i class="fa-solid fa-magnifying-glass"></i> Buscar
             </button>
         </form>
@@ -127,7 +127,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
 
     <?php if ($order): ?>
-        <div style="max-width: 700px; margin: 0 auto; background: var(--bg-card); border: 1px solid var(--border-highlight); border-radius: var(--radius-lg); padding: 2.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+        <div class="status-card">
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1.25rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
                 <div>
@@ -155,7 +155,7 @@ require_once __DIR__ . '/includes/header.php';
             </div>
 
             <!-- Detalles del Pedido -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+            <div class="status-details-grid">
                 <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); padding: 1rem; border-radius: var(--radius-md);">
                     <div style="font-size: 0.8rem; color: var(--text-muted);">Servicio Contratado</div>
                     <div style="font-weight: 700; margin-top: 0.25rem;">
@@ -171,7 +171,7 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
 
-                <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); padding: 1rem; border-radius: var(--radius-md); grid-column: span 2;">
+                <div class="span-2" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); padding: 1rem; border-radius: var(--radius-md); grid-column: span 2;">
                     <div style="font-size: 0.8rem; color: var(--text-muted);">Perfil / Publicación Destinatario</div>
                     <div style="font-weight: 700; margin-top: 0.25rem; word-break: break-all; color: var(--accent-cyan);">
                         <?= htmlspecialchars($order['target_link']) ?>
@@ -188,7 +188,7 @@ require_once __DIR__ . '/includes/header.php';
 
             <!-- Estado de Entrega -->
             <div style="background: rgba(138, 43, 226, 0.1); border: 1px solid var(--border-highlight); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 2rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                     <div>
                         <div style="font-size: 0.85rem; color: var(--text-muted);">Estado del Envío:</div>
                         <div style="font-weight: 800; font-size: 1.1rem; color: #fff; margin-top: 0.2rem;">

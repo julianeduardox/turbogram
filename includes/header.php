@@ -92,4 +92,6 @@ $whatsapp_num = Settings::get('whatsapp_number', '5492364321999');
                 <i class="fa-solid fa-bars"></i>
             </button>
         </div>
+        <div class="nav-overlay" id="navOverlay"></div>
     </header>
+
