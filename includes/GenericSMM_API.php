@@ -64,10 +64,62 @@ class GenericSMM_API {
         return $this->api_url;
     }
 
+    private static bool $schemaChecked = false;
+
+    /**
+     * Auto-migración y verificación de esquema en base de datos para producción
+     */
+    public static function checkSchema(): void {
+        if (self::$schemaChecked) return;
+        try {
+            $pdo = Database::getConnection();
+            $tableExists = $pdo->query("SHOW TABLES LIKE 'providers'")->fetch();
+            if (!$tableExists) {
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS `providers` (
+                      `id` INT AUTO_INCREMENT PRIMARY KEY,
+                      `name` VARCHAR(100) NOT NULL,
+                      `api_url` VARCHAR(255) NOT NULL,
+                      `api_key` VARCHAR(255) NOT NULL,
+                      `is_default` TINYINT(1) NOT NULL DEFAULT 0,
+                      `status` TINYINT(1) NOT NULL DEFAULT 1,
+                      `balance` DECIMAL(12,4) DEFAULT NULL,
+                      `balance_currency` VARCHAR(10) DEFAULT 'USD',
+                      `last_balance_check` DATETIME DEFAULT NULL,
+                      `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                ");
+
+                $url = Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
+                $key = Settings::get('provider_api_key', '4ca3f76aaaa9eee0be6bfef255c072f8');
+                $pdo->prepare("INSERT INTO providers (id, name, api_url, api_key, is_default, status) VALUES (1, 'SolydSMM', ?, ?, 1, 1)")
+                    ->execute([$url, $key]);
+            }
+
+            $colS = $pdo->query("SHOW COLUMNS FROM services LIKE 'provider_id'")->fetch();
+            if (!$colS) {
+                $pdo->exec("ALTER TABLE services ADD COLUMN provider_id INT NOT NULL DEFAULT 1 AFTER category_id");
+                $pdo->exec("ALTER TABLE services ADD INDEX idx_service_provider (provider_id)");
+            }
+
+            $colO = $pdo->query("SHOW COLUMNS FROM orders LIKE 'provider_id'")->fetch();
+            if (!$colO) {
+                $pdo->exec("ALTER TABLE orders ADD COLUMN provider_id INT NULL DEFAULT 1 AFTER service_id");
+                $pdo->exec("ALTER TABLE orders ADD INDEX idx_order_provider (provider_id)");
+            }
+
+            self::$schemaChecked = true;
+        } catch (Exception $e) {
+            // Silencioso
+        }
+    }
+
     /**
      * Obtiene un proveedor por su ID
      */
     public static function getProviderById(int $id): ?array {
+        self::checkSchema();
         try {
             $pdo = Database::getConnection();
             $stmt = $pdo->prepare("SELECT * FROM providers WHERE id = ? LIMIT 1");
@@ -83,6 +135,7 @@ class GenericSMM_API {
      * Obtiene el proveedor predeterminado activo
      */
     public static function getDefaultProvider(): ?array {
+        self::checkSchema();
         try {
             $pdo = Database::getConnection();
             $stmt = $pdo->query("SELECT * FROM providers WHERE is_default = 1 AND status = 1 LIMIT 1");
@@ -101,6 +154,7 @@ class GenericSMM_API {
      * Obtiene todos los proveedores
      */
     public static function getAllProviders(bool $onlyActive = false): array {
+        self::checkSchema();
         try {
             $pdo = Database::getConnection();
             $sql = "SELECT * FROM providers";
