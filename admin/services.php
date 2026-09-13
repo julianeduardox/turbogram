@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (verify_csrf_token($_POST['csrf_token'] ?? '')) {
         $id                  = (int)($_POST['service_id'] ?? 0);
         $category_id         = (int)$_POST['category_id'];
+        $provider_id         = (int)($_POST['provider_id'] ?? 1);
         $provider_service_id = (int)$_POST['provider_service_id'];
         $name                = clean_input($_POST['name']);
         $platform            = clean_input($_POST['platform']);
@@ -29,33 +30,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($id > 0) {
             $stmtUpd = $pdo->prepare("
                 UPDATE services 
-                SET category_id=?, provider_service_id=?, name=?, platform=?, price_per_1000=?, min_quantity=?, max_quantity=?, input_placeholder=?, description=?, status=? 
+                SET category_id=?, provider_id=?, provider_service_id=?, name=?, platform=?, price_per_1000=?, min_quantity=?, max_quantity=?, input_placeholder=?, description=?, status=? 
                 WHERE id=?
             ");
-            $stmtUpd->execute([$category_id, $provider_service_id, $name, $platform, $price_per_1000, $min_quantity, $max_quantity, $placeholder, $description, $status, $id]);
+            $stmtUpd->execute([$category_id, $provider_id, $provider_service_id, $name, $platform, $price_per_1000, $min_quantity, $max_quantity, $placeholder, $description, $status, $id]);
             $message = "Servicio actualizado correctamente.";
         } else {
             $stmtIns = $pdo->prepare("
                 INSERT INTO services 
-                (category_id, provider_service_id, name, platform, price_per_1000, min_quantity, max_quantity, input_placeholder, description, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (category_id, provider_id, provider_service_id, name, platform, price_per_1000, min_quantity, max_quantity, input_placeholder, description, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmtIns->execute([$category_id, $provider_service_id, $name, $platform, $price_per_1000, $min_quantity, $max_quantity, $placeholder, $description, $status]);
+            $stmtIns->execute([$category_id, $provider_id, $provider_service_id, $name, $platform, $price_per_1000, $min_quantity, $max_quantity, $placeholder, $description, $status]);
             $message = "Nuevo servicio agregado correctamente.";
         }
-        log_audit('SAVE_SERVICE', 'Servicio guardado: ' . $name);
+        log_audit('SAVE_SERVICE', 'Servicio guardado: ' . $name . ' (Proveedor ID: ' . $provider_id . ')');
     }
 }
+
+// Consultar Proveedores Disponibles
+$stmtProv = $pdo->query("SELECT * FROM providers ORDER BY is_default DESC, name ASC");
+$allProviders = $stmtProv->fetchAll();
 
 // Consultar Categorías
 $stmtCats = $pdo->query("SELECT * FROM categories ORDER BY sort_order ASC");
 $categories = $stmtCats->fetchAll();
 
-// Consultar Servicios
+// Consultar Servicios con su Proveedor
 $stmtServices = $pdo->query("
-    SELECT s.*, c.name as category_name 
+    SELECT s.*, c.name as category_name, p.name as provider_name 
     FROM services s 
     JOIN categories c ON s.category_id = c.id 
+    LEFT JOIN providers p ON s.provider_id = p.id 
     ORDER BY c.sort_order ASC, s.sort_order ASC
 ");
 $services = $stmtServices->fetchAll();
@@ -95,6 +101,7 @@ if (isset($_GET['edit'])) {
             <li><a href="orders.php"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php" class="active"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
+            <li><a href="providers.php"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
@@ -104,8 +111,11 @@ if (isset($_GET['edit'])) {
         <div class="admin-header">
             <div>
                 <h1 class="admin-title">Servicios y Catálogo de Precios</h1>
-                <p style="color: var(--admin-muted); font-size: 0.9rem; margin: 0;">Configurá precios en ARS por cada 1.000 unidades y conectá con los IDs del proveedor</p>
+                <p style="color: var(--admin-muted); font-size: 0.9rem; margin: 0;">Configurá precios en ARS por cada 1.000 unidades y asigná el proveedor y su ID de servicio</p>
             </div>
+            <a href="providers.php" class="btn-admin" style="background: rgba(255,255,255,0.1);">
+                <i class="fa-solid fa-server"></i> Administrar Proveedores SMM
+            </a>
         </div>
 
         <?php if ($message): ?>
@@ -127,7 +137,7 @@ if (isset($_GET['edit'])) {
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">Categoría</label>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Categoría</label>
                         <select name="category_id" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" required>
                             <?php foreach ($categories as $cat): ?>
                                 <option value="<?= $cat['id'] ?>" <?= ($editService['category_id'] ?? '') == $cat['id'] ? 'selected' : '' ?>>
@@ -138,27 +148,38 @@ if (isset($_GET['edit'])) {
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">ID Servicio SolydSMM</label>
-                        <input type="number" name="provider_service_id" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['provider_service_id'] ?? '' ?>" placeholder="Ej: 494" required>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Proveedor SMM</label>
+                        <select name="provider_id" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" required>
+                            <?php foreach ($allProviders as $pr): ?>
+                                <option value="<?= $pr['id'] ?>" <?= (($editService['provider_id'] ?? 1) == $pr['id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($pr['name']) ?> <?= $pr['is_default'] == 1 ? '⭐ (Predeterminado)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">Plataforma</label>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">ID en el Proveedor</label>
+                        <input type="number" name="provider_service_id" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['provider_service_id'] ?? '' ?>" placeholder="Ej: 382" required>
+                    </div>
+
+                    <div>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Plataforma</label>
                         <input type="text" name="platform" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['platform'] ?? 'instagram' ?>" placeholder="instagram, tiktok, etc." required>
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">Precio de Venta por 1.000 (ARS)</label>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Precio de Venta por 1.000 (ARS)</label>
                         <input type="number" step="10" name="price_per_1000" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['price_per_1000'] ?? '3500' ?>" placeholder="Ej: 3500" required>
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">Mínimo Cantidad</label>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Mínimo Cantidad</label>
                         <input type="number" name="min_quantity" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['min_quantity'] ?? '100' ?>" required>
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem;">Máximo Cantidad</label>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Máximo Cantidad</label>
                         <input type="number" name="max_quantity" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= $editService['max_quantity'] ?? '50000' ?>" required>
                     </div>
                 </div>
@@ -198,7 +219,7 @@ if (isset($_GET['edit'])) {
             <table class="admin-table">
                 <thead>
                     <tr>
-                        <th>ID SolydSMM</th>
+                        <th>Proveedor / ID</th>
                         <th>Categoría</th>
                         <th>Nombre del Servicio</th>
                         <th>Precio / 1.000 ARS</th>
@@ -210,7 +231,12 @@ if (isset($_GET['edit'])) {
                 <tbody>
                     <?php foreach ($services as $s): ?>
                         <tr>
-                            <td><strong style="color: var(--admin-accent);">#<?= $s['provider_service_id'] ?></strong></td>
+                            <td>
+                                <span class="badge badge-purple" style="font-size: 0.7rem; margin-bottom: 0.2rem; display: inline-block;">
+                                    <i class="fa-solid fa-server"></i> <?= htmlspecialchars($s['provider_name'] ?? 'Proveedor') ?>
+                                </span><br>
+                                <strong style="color: var(--admin-accent);">#<?= $s['provider_service_id'] ?></strong>
+                            </td>
                             <td><?= htmlspecialchars($s['category_name']) ?></td>
                             <td style="color: #fff; font-weight: 600;"><?= htmlspecialchars($s['name']) ?></td>
                             <td style="color: #4ade80; font-weight: 700;"><?= format_price($s['price_per_1000']) ?></td>

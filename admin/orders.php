@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/settings.php';
 require_once __DIR__ . '/../config/security.php';
+require_once __DIR__ . '/../includes/GenericSMM_API.php';
 require_once __DIR__ . '/../includes/SolydSMM_API.php';
 
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
@@ -13,36 +14,44 @@ $pdo = Database::getConnection();
 $message = '';
 $message_type = '';
 
-// Reintento Manual de Envío a SolydSMM
+// Reintento Manual de Envío a Proveedor
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'retry_send') {
     if (verify_csrf_token($_POST['csrf_token'] ?? '')) {
         $order_id = (int)$_POST['order_id'];
-        $stmtOrder = $pdo->prepare("SELECT o.*, s.provider_service_id FROM orders o JOIN services s ON o.service_id = s.id WHERE o.id = ?");
+        $stmtOrder = $pdo->prepare("
+            SELECT o.*, s.provider_service_id, s.provider_id as service_provider_id 
+            FROM orders o 
+            JOIN services s ON o.service_id = s.id 
+            WHERE o.id = ?
+        ");
         $stmtOrder->execute([$order_id]);
         $orderToRetry = $stmtOrder->fetch();
 
         if ($orderToRetry) {
-            $api = new SolydSMM_API();
+            $providerId = (int)($orderToRetry['provider_id'] ?: $orderToRetry['service_provider_id'] ?: 1);
+            $api = new GenericSMM_API($providerId);
             $res = $api->addOrder(
                 (int)$orderToRetry['provider_service_id'],
                 $orderToRetry['target_link'],
                 (int)$orderToRetry['quantity']
             );
 
+            $provName = $api->getProviderName() ?: 'Proveedor';
+
             if ($res['success']) {
-                $stmtUpd = $pdo->prepare("UPDATE orders SET provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL WHERE id = ?");
-                $stmtUpd->execute([$res['order_id'], $res['raw'], $order_id]);
+                $stmtUpd = $pdo->prepare("UPDATE orders SET provider_id = ?, provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL WHERE id = ?");
+                $stmtUpd->execute([$providerId, $res['order_id'], $res['raw'], $order_id]);
 
-                $message = "Orden " . htmlspecialchars($orderToRetry['order_code']) . " reenviada con éxito al proveedor. ID Asignado: " . $res['order_id'];
+                $message = "Orden " . htmlspecialchars($orderToRetry['order_code']) . " reenviada con éxito a {$provName}. ID Asignado: " . $res['order_id'];
                 $message_type = "success";
-                log_audit('MANUAL_RETRY_SUCCESS', 'Reintento exitoso para orden: ' . $orderToRetry['order_code']);
+                log_audit('MANUAL_RETRY_SUCCESS', 'Reintento exitoso para orden: ' . $orderToRetry['order_code'] . ' en ' . $provName);
             } else {
-                $stmtUpd = $pdo->prepare("UPDATE orders SET provider_status = 'error', error_message = ?, provider_response = ? WHERE id = ?");
-                $stmtUpd->execute([$res['error'], $res['raw'] ?? null, $order_id]);
+                $stmtUpd = $pdo->prepare("UPDATE orders SET provider_id = ?, provider_status = 'error', error_message = ?, provider_response = ? WHERE id = ?");
+                $stmtUpd->execute([$providerId, $res['error'], $res['raw'] ?? null, $order_id]);
 
-                $message = "Falla al reenviar orden " . htmlspecialchars($orderToRetry['order_code']) . ": " . $res['error'];
+                $message = "Falla al reenviar orden " . htmlspecialchars($orderToRetry['order_code']) . " a {$provName}: " . $res['error'];
                 $message_type = "danger";
-                log_audit('MANUAL_RETRY_FAILED', 'Falla en reintento para orden: ' . $orderToRetry['order_code'] . ' Error: ' . $res['error']);
+                log_audit('MANUAL_RETRY_FAILED', 'Falla en reintento para orden: ' . $orderToRetry['order_code'] . ' en ' . $provName . ' Error: ' . $res['error']);
             }
         }
     }
@@ -105,9 +114,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 
 // Consultar Órdenes
 $stmtOrders = $pdo->prepare("
-    SELECT o.*, s.name as service_name 
+    SELECT o.*, s.name as service_name, p.name as provider_name 
     FROM orders o 
     JOIN services s ON o.service_id = s.id 
+    LEFT JOIN providers p ON o.provider_id = p.id 
     $whereClause 
     ORDER BY o.id DESC
 ");
@@ -141,6 +151,7 @@ $orders = $stmtOrders->fetchAll();
             <li><a href="orders.php" class="active"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
+            <li><a href="providers.php"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
@@ -241,8 +252,10 @@ $orders = $stmtOrders->fetchAll();
                                 <td>
                                     <?php if ($o['provider_status'] === 'sent' || $o['provider_status'] === 'completed'): ?>
                                         <span class="badge badge-purple">Enviado (#<?= $o['provider_order_id'] ?>)</span>
+                                        <br><small style="color: var(--admin-muted); font-size: 0.75rem;"><i class="fa-solid fa-server"></i> <?= htmlspecialchars($o['provider_name'] ?? 'Proveedor') ?></small>
                                     <?php elseif ($o['provider_status'] === 'error'): ?>
                                         <span class="badge badge-danger" title="<?= htmlspecialchars($o['error_message'] ?? '') ?>">Error Envío</span>
+                                        <?php if (!empty($o['provider_name'])): ?><br><small style="color: #fca5a5; font-size: 0.75rem;"><?= htmlspecialchars($o['provider_name']) ?></small><?php endif; ?>
                                     <?php else: ?>
                                         <span class="badge badge-warning">Pendiente</span>
                                     <?php endif; ?>
@@ -250,7 +263,7 @@ $orders = $stmtOrders->fetchAll();
                                 <td>
                                     <!-- Botón Reintentar Envío Manual -->
                                     <?php if ($o['mp_status'] === 'approved' && ($o['provider_status'] === 'error' || $o['provider_status'] === 'pending_send')): ?>
-                                        <form action="orders.php" method="POST" onsubmit="return confirm('¿Reenviar este pedido a SolydSMM?');">
+                                        <form action="orders.php" method="POST" onsubmit="return confirm('¿Reenviar este pedido al proveedor asignado?');">
                                             <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
                                             <input type="hidden" name="action" value="retry_send">
                                             <input type="hidden" name="order_id" value="<?= $o['id'] ?>">

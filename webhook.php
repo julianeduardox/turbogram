@@ -8,6 +8,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/settings.php';
 require_once __DIR__ . '/config/security.php';
 require_once __DIR__ . '/includes/MercadoPago_Service.php';
+require_once __DIR__ . '/includes/GenericSMM_API.php';
 require_once __DIR__ . '/includes/SolydSMM_API.php';
 
 // Mercado Pago envía notificaciones por GET o POST
@@ -50,7 +51,7 @@ if (empty($order_code)) {
 // 2. Buscar la Orden en la Base de Datos
 $pdo = Database::getConnection();
 $stmt = $pdo->prepare("
-    SELECT o.*, s.provider_service_id 
+    SELECT o.*, s.provider_service_id, s.provider_id as service_provider_id 
     FROM orders o 
     JOIN services s ON o.service_id = s.id 
     WHERE o.order_code = ?
@@ -80,42 +81,51 @@ if ($mp_status === 'approved') {
 
     log_audit('PAYMENT_APPROVED', 'Pago aprobado por MP para la orden ' . $order_code . ' (MP ID: ' . $payment_id . ')');
 
-    // 5. ENVIAR AUTOMÁTICAMENTE AL PROVEEDOR (SolydSMM)
-    $smmAPI = new SolydSMM_API();
+    // 5. ENVIAR AUTOMÁTICAMENTE AL PROVEEDOR ASIGNADO
+    $providerId = (int)($order['provider_id'] ?: $order['service_provider_id'] ?: 1);
+    $smmAPI = new GenericSMM_API($providerId);
     $sendResult = $smmAPI->addOrder(
         (int)$order['provider_service_id'],
         $order['target_link'],
         (int)$order['quantity']
     );
 
+    $provName = $smmAPI->getProviderName() ?: 'Proveedor';
+
     if ($sendResult['success']) {
         $stmtOrderSuccess = $pdo->prepare("
             UPDATE orders 
-            SET provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL 
+            SET provider_id = ?, provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL 
             WHERE id = ?
         ");
         $stmtOrderSuccess->execute([
+            $providerId,
             $sendResult['order_id'],
             $sendResult['raw'],
             $order['id']
         ]);
 
-        log_audit('PROVIDER_ORDER_SENT', 'Orden ' . $order_code . ' enviada con éxito a SolydSMM. ID Proveedor: ' . $sendResult['order_id']);
+        log_audit('PROVIDER_ORDER_SENT', 'Orden ' . $order_code . ' enviada con éxito a ' . $provName . '. ID Proveedor: ' . $sendResult['order_id']);
     } else {
-        // En caso de falla al enviar al proveedor (ej: saldo bajo en solydsmm)
+        // En caso de falla al enviar al proveedor (ej: saldo bajo en proveedor)
         $stmtOrderError = $pdo->prepare("
             UPDATE orders 
-            SET provider_status = 'error', error_message = ?, provider_response = ? 
+            SET provider_id = ?, provider_status = 'error', error_message = ?, provider_response = ? 
             WHERE id = ?
         ");
         $stmtOrderError->execute([
+            $providerId,
             $sendResult['error'],
             $sendResult['raw'] ?? null,
             $order['id']
         ]);
 
-        log_audit('PROVIDER_ORDER_FAILED', 'Error al enviar orden ' . $order_code . ' a SolydSMM: ' . $sendResult['error']);
+        log_audit('PROVIDER_ORDER_FAILED', 'Error al enviar orden ' . $order_code . ' a ' . $provName . ': ' . $sendResult['error']);
     }
+
+    http_response_code(200);
+    echo "Pago y despacho procesados correctamente";
+    exit;
 } else {
     // Pago rechazado, pendiente o cancelado
     $stmtUpdateFail = $pdo->prepare("UPDATE orders SET mp_status = ?, mp_payment_id = ? WHERE id = ?");

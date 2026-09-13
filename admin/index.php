@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/settings.php';
 require_once __DIR__ . '/../config/security.php';
+require_once __DIR__ . '/../includes/GenericSMM_API.php';
 require_once __DIR__ . '/../includes/SolydSMM_API.php';
 
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
@@ -11,9 +12,10 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 
 $pdo = Database::getConnection();
 
-// 1. Obtener Saldo del Proveedor SolydSMM
-$smmAPI = new SolydSMM_API();
+// 1. Obtener Saldo del Proveedor Predeterminado
+$smmAPI = new GenericSMM_API();
 $balanceResult = $smmAPI->getBalance();
+$provider_name = $smmAPI->getProviderName() ?: 'Proveedor SMM';
 $provider_balance = $balanceResult['success'] ? $balanceResult['balance'] : 0.00;
 $provider_currency = $balanceResult['currency'] ?? 'USD';
 
@@ -65,6 +67,7 @@ $recentOrders = $stmtRecent->fetchAll();
             <li><a href="orders.php"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
+            <li><a href="providers.php"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
@@ -77,29 +80,34 @@ $recentOrders = $stmtRecent->fetchAll();
                 <h1 class="admin-title">Panel del Dueño</h1>
                 <p style="color: var(--admin-muted); font-size: 0.9rem; margin: 0;">Resumen en tiempo real de ventas y saldos</p>
             </div>
-            <a href="../index.php" target="_blank" class="btn-admin" style="background: rgba(255,255,255,0.08);">
-                <i class="fa-solid fa-arrow-up-right-from-square"></i> Ver Sitio Web
-            </a>
+            <div style="display: flex; gap: 0.75rem;">
+                <a href="providers.php" class="btn-admin" style="background: rgba(138, 43, 226, 0.2); border: 1px solid #8a2be2;">
+                    <i class="fa-solid fa-server"></i> Proveedores SMM
+                </a>
+                <a href="../index.php" target="_blank" class="btn-admin" style="background: rgba(255,255,255,0.08);">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Ver Sitio Web
+                </a>
+            </div>
         </div>
 
         <!-- Alerta de Saldo en Proveedor si está bajo -->
         <?php if ($provider_balance < 2.00): ?>
-            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between;">
+            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem; color: #ef4444;"></i>
                     <div>
-                        <strong style="color: #fca5a5; font-size: 1.05rem;">¡Atención! Saldo bajo en SolydSMM: $ <?= number_format($provider_balance, 2) ?> <?= $provider_currency ?></strong>
-                        <p style="color: var(--admin-muted); font-size: 0.875rem; margin: 0.2rem 0 0 0;">Recargá tu saldo en solydsmm.com para que los nuevos pedidos pagados sigan enviándose automáticamente.</p>
+                        <strong style="color: #fca5a5; font-size: 1.05rem;">¡Atención! Saldo bajo en <?= htmlspecialchars($provider_name) ?>: $ <?= number_format($provider_balance, 2) ?> <?= $provider_currency ?></strong>
+                        <p style="color: var(--admin-muted); font-size: 0.875rem; margin: 0.2rem 0 0 0;">Recargá tu saldo en el proveedor o cambiá al proveedor de respaldo en un clic.</p>
                     </div>
                 </div>
-                <a href="https://solydsmm.com" target="_blank" class="btn-admin btn-admin-danger">Recargar Proveedor</a>
+                <a href="providers.php" class="btn-admin btn-admin-danger">Gestionar Proveedores</a>
             </div>
         <?php endif; ?>
 
         <!-- Tarjetas de Estadísticas -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-label">Saldo en SolydSMM</div>
+                <div class="stat-label">Saldo en <?= htmlspecialchars($provider_name) ?></div>
                 <div class="stat-val" style="color: #38bdf8;">
                     $ <?= number_format($provider_balance, 2) ?> <span style="font-size: 0.9rem; color: var(--admin-muted);"><?= $provider_currency ?></span>
                 </div>

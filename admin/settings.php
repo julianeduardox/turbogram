@@ -18,9 +18,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         Settings::set('mp_public_key', trim($_POST['mp_public_key'] ?? ''));
         Settings::set('mp_sandbox', isset($_POST['mp_sandbox']) ? '1' : '0');
 
-        // Proveedor API
-        Settings::set('provider_api_url', trim($_POST['provider_api_url'] ?? 'https://solydsmm.com/api/v2'));
-        Settings::set('provider_api_key', trim($_POST['provider_api_key'] ?? ''));
+        // Proveedor API Predeterminado
+        $newProvUrl = trim($_POST['provider_api_url'] ?? 'https://solydsmm.com/api/v2');
+        $newProvKey = trim($_POST['provider_api_key'] ?? '');
+        Settings::set('provider_api_url', $newProvUrl);
+        Settings::set('provider_api_key', $newProvKey);
+
+        // Sincronizar con el proveedor predeterminado en la tabla providers
+        try {
+            $pdo = Database::getConnection();
+            $stmtDef = $pdo->query("SELECT id FROM providers WHERE is_default = 1 LIMIT 1");
+            $defId = $stmtDef->fetchColumn();
+            if ($defId) {
+                $stmtUpdProv = $pdo->prepare("UPDATE providers SET api_url = ?, api_key = ? WHERE id = ?");
+                $stmtUpdProv->execute([$newProvUrl, $newProvKey, $defId]);
+            }
+        } catch (Exception $e) {
+            // Silencioso
+        }
 
         // Generales
         Settings::set('site_name', trim($_POST['site_name'] ?? 'Turbogram'));
@@ -32,11 +47,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Cargar Proveedor Predeterminado
+$pdo = Database::getConnection();
+$stmtDefProv = $pdo->query("SELECT * FROM providers WHERE is_default = 1 LIMIT 1");
+$defaultProvider = $stmtDefProv->fetch();
+
 $mp_access_token = Settings::get('mp_access_token', '');
 $mp_public_key   = Settings::get('mp_public_key', '');
 $mp_sandbox      = Settings::get('mp_sandbox', '1');
-$provider_url    = Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
-$provider_key    = Settings::get('provider_api_key', '');
+$provider_url    = $defaultProvider['api_url'] ?? Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
+$provider_key    = $defaultProvider['api_key'] ?? Settings::get('provider_api_key', '');
 $site_name       = Settings::get('site_name', 'Turbogram');
 $site_tagline    = Settings::get('site_tagline', 'Impulsá tus redes sociales en segundos');
 $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
@@ -68,6 +88,7 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
             <li><a href="orders.php"><i class="fa-solid fa-cart-shopping"></i> Pedidos</a></li>
             <li><a href="services.php"><i class="fa-solid fa-list-check"></i> Servicios y Precios</a></li>
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
+            <li><a href="providers.php"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php" class="active"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
@@ -116,9 +137,18 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
 
             <!-- 2. Proveedor SMM -->
             <div class="table-card" style="margin-bottom: 2rem;">
-                <h3 style="font-family: 'Outfit', sans-serif; margin-top: 0; margin-bottom: 1.25rem; color: #c084fc;">
-                    <i class="fa-solid fa-server"></i> Integración con Proveedor (SolydSMM)
-                </h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                    <h3 style="font-family: 'Outfit', sans-serif; margin: 0; color: #c084fc;">
+                        <i class="fa-solid fa-server"></i> Proveedor SMM Predeterminado (<?= htmlspecialchars($defaultProvider['name'] ?? 'SolydSMM') ?>)
+                    </h3>
+                    <a href="providers.php" class="btn-admin" style="padding: 0.45rem 1rem; font-size: 0.85rem; background: #8a2be2;">
+                        <i class="fa-solid fa-layer-group"></i> Abrir Gestor Multi-Proveedor
+                    </a>
+                </div>
+
+                <p style="color: var(--admin-muted); font-size: 0.85rem; margin-bottom: 1.25rem; line-height: 1.5;">
+                    Podés editar la URL y Key del proveedor predeterminado directamente aquí, o ingresar a <a href="providers.php" style="color: #c084fc; text-decoration: underline;">Proveedores SMM</a> para tener múltiples proveedores guardados simultáneamente y alternar entre ellos en un solo clic.
+                </p>
 
                 <div style="margin-bottom: 1.25rem;">
                     <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">URL API del Proveedor</label>
