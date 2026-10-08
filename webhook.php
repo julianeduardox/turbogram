@@ -1,6 +1,6 @@
 <?php
 /**
- * Webhook IPN de Mercado Pago - Procesamiento Automático Anti-Exploit
+ * Webhook IPN de Mercado Pago - Autenticación Fail-Closed (HMAC-SHA256) y Procesamiento Centralizado
  * Turbogram
  */
 
@@ -8,131 +8,119 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/config/settings.php';
 require_once __DIR__ . '/config/security.php';
 require_once __DIR__ . '/includes/MercadoPago_Service.php';
-require_once __DIR__ . '/includes/GenericSMM_API.php';
-require_once __DIR__ . '/includes/SolydSMM_API.php';
+require_once __DIR__ . '/includes/Order_Processor.php';
 
-// Mercado Pago envía notificaciones por GET o POST
-$payment_id = $_GET['data_id'] ?? ($_GET['id'] ?? null);
-
-if (!$payment_id) {
-    // Intentar leer payload JSON en el body
-    $body = file_get_contents('php://input');
-    $data = json_decode($body, true);
-    $payment_id = $data['data']['id'] ?? ($data['id'] ?? null);
+// Helper para obtener cabeceras HTTP de forma agnóstica al entorno (Apache, Nginx, CLI)
+function get_webhook_header(string $name): string {
+    $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+    if (isset($_SERVER[$serverKey])) {
+        return (string)$_SERVER[$serverKey];
+    }
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        foreach ($headers as $k => $v) {
+            if (strcasecmp($k, $name) === 0) {
+                return (string)$v;
+            }
+        }
+    }
+    return '';
 }
+
+// 1. Obtener identificador del recurso notificado
+$rawBody = file_get_contents('php://input');
+$bodyData = json_decode($rawBody, true) ?: [];
+
+$payment_id = $_GET['data_id'] 
+    ?? ($_GET['data.id'] 
+    ?? ($_GET['id'] 
+    ?? ($bodyData['data']['id'] ?? ($bodyData['id'] ?? null))));
 
 if (!$payment_id) {
     http_response_code(400);
-    echo "Falta ID de Pago";
+    echo "Falta ID de datos";
     exit;
 }
 
-// 1. Consultar estado real del pago directamente en la API de Mercado Pago
+$payment_id = (string)$payment_id;
+
+// 2. Extraer cabeceras de firma obligatorias
+$xSignature = get_webhook_header('x-signature');
+$xRequestId = get_webhook_header('x-request-id');
+
+// 3. SEGURIDAD FAIL-CLOSED: Verificar firma criptográfica ANTES de consultar APIs externas o modificar pedidos
+$sigResult = MercadoPago_Service::verifyWebhookSignature($xSignature, $xRequestId, $payment_id);
+
+if (!$sigResult['valid']) {
+    log_audit('WEBHOOK_UNAUTHORIZED', "Rechazo de webhook no autenticado (ID: {$payment_id}): " . ($sigResult['error'] ?? 'Firma inválida'));
+    http_response_code(401);
+    echo "Unauthorized: " . ($sigResult['error'] ?? 'Firma inválida');
+    exit;
+}
+
+// 4. FIRMA VÁLIDA: Consultar estado real del pago en la API de Mercado Pago
 $mpService = new MercadoPago_Service();
-$payment = $mpService->getPayment((string)$payment_id);
+$payment = $mpService->getPayment($payment_id);
 
 if (!$payment['success']) {
-    log_audit('WEBHOOK_MP_ERROR', 'No se pudo verificar el pago ID ' . $payment_id . ': ' . ($payment['error'] ?? ''));
-    http_response_code(200); // Responder 200 a MP para evitar reintentos infinitos si la credencial falló
-    echo "No se pudo consultar el pago";
-    exit;
-}
-
-$mp_status = $payment['status'];
-$order_code = $payment['external_reference'];
-
-if (empty($order_code)) {
-    log_audit('WEBHOOK_NO_REF', 'Pago ID ' . $payment_id . ' no tiene external_reference.');
-    http_response_code(200);
-    echo "OK sin referencia";
-    exit;
-}
-
-// 2. Buscar la Orden en la Base de Datos
-$pdo = Database::getConnection();
-$stmt = $pdo->prepare("
-    SELECT o.*, s.provider_service_id, s.provider_id as service_provider_id 
-    FROM orders o 
-    JOIN services s ON o.service_id = s.id 
-    WHERE o.order_code = ?
-");
-$stmt->execute([$order_code]);
-$order = $stmt->fetch();
-
-if (!$order) {
-    log_audit('WEBHOOK_ORDER_NOT_FOUND', 'Código de orden no existe: ' . $order_code);
-    http_response_code(200);
-    echo "Orden no encontrada";
-    exit;
-}
-
-// 3. MEDIDA ANTI-EXPLOIT: Verificar si el pago o envío ya fue procesado anteriormente
-if ($order['mp_status'] === 'approved' && in_array($order['provider_status'], ['sent', 'completed', 'in_progress'])) {
-    log_audit('WEBHOOK_DUPLICATE_PREVENTED', 'Intento de procesamiento duplicado bloqueado para la orden: ' . $order_code);
-    http_response_code(200);
-    echo "Orden ya procesada anteriormente";
-    exit;
-}
-
-// 4. Actualizar Estado de Pago
-if ($mp_status === 'approved') {
-    $stmtUpdate = $pdo->prepare("UPDATE orders SET mp_status = 'approved', mp_payment_id = ? WHERE id = ?");
-    $stmtUpdate->execute([$payment_id, $order['id']]);
-
-    log_audit('PAYMENT_APPROVED', 'Pago aprobado por MP para la orden ' . $order_code . ' (MP ID: ' . $payment_id . ')');
-
-    // 5. ENVIAR AUTOMÁTICAMENTE AL PROVEEDOR ASIGNADO
-    $providerId = (int)($order['provider_id'] ?: $order['service_provider_id'] ?: 1);
-    $smmAPI = new GenericSMM_API($providerId);
-    $sendResult = $smmAPI->addOrder(
-        (int)$order['provider_service_id'],
-        $order['target_link'],
-        (int)$order['quantity']
-    );
-
-    $provName = $smmAPI->getProviderName() ?: 'Proveedor';
-
-    if ($sendResult['success']) {
-        $stmtOrderSuccess = $pdo->prepare("
-            UPDATE orders 
-            SET provider_id = ?, provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL 
-            WHERE id = ?
-        ");
-        $stmtOrderSuccess->execute([
-            $providerId,
-            $sendResult['order_id'],
-            $sendResult['raw'],
-            $order['id']
-        ]);
-
-        log_audit('PROVIDER_ORDER_SENT', 'Orden ' . $order_code . ' enviada con éxito a ' . $provName . '. ID Proveedor: ' . $sendResult['order_id']);
+    $isTemp = $payment['is_temporary'] ?? true;
+    if ($isTemp) {
+        // Fallo temporal de conexión o 5xx de Mercado Pago: responder 503 para que MP reintente
+        log_audit('WEBHOOK_MP_TIMEOUT', "Fallo temporal de conexión con Mercado Pago al consultar pago {$payment_id}: " . ($payment['error'] ?? ''));
+        http_response_code(503);
+        echo "Temporary upstream failure, retry later";
+        exit;
     } else {
-        // En caso de falla al enviar al proveedor (ej: saldo bajo en proveedor)
-        $stmtOrderError = $pdo->prepare("
-            UPDATE orders 
-            SET provider_id = ?, provider_status = 'error', error_message = ?, provider_response = ? 
-            WHERE id = ?
-        ");
-        $stmtOrderError->execute([
-            $providerId,
-            $sendResult['error'],
-            $sendResult['raw'] ?? null,
-            $order['id']
-        ]);
-
-        log_audit('PROVIDER_ORDER_FAILED', 'Error al enviar orden ' . $order_code . ' a ' . $provName . ': ' . $sendResult['error']);
+        // Fallo de cliente definitivo (ej: pago no existe, 404): responder 400
+        log_audit('WEBHOOK_MP_BAD_REQ', "Pago no encontrado o error cliente en Mercado Pago {$payment_id}: " . ($payment['error'] ?? ''));
+        http_response_code(400);
+        echo "Bad request: " . ($payment['error'] ?? 'Pago no encontrado');
+        exit;
     }
-
-    http_response_code(200);
-    echo "Pago y despacho procesados correctamente";
-    exit;
-} else {
-    // Pago rechazado, pendiente o cancelado
-    $stmtUpdateFail = $pdo->prepare("UPDATE orders SET mp_status = ?, mp_payment_id = ? WHERE id = ?");
-    $stmtUpdateFail->execute([$mp_status, $payment_id, $order['id']]);
-
-    log_audit('PAYMENT_STATUS_UPDATE', 'Estado de pago para ' . $order_code . ' actualizado a: ' . $mp_status);
 }
 
+$order_code = $payment['external_reference'] ?? '';
+if (empty($order_code)) {
+    log_audit('WEBHOOK_NO_REF', "Pago legítimo {$payment_id} no contiene external_reference.");
+    http_response_code(200);
+    echo "OK: Sin referencia de orden";
+    exit;
+}
+
+// 5. Procesamiento centralizado y despacho atómico (reutilizando datos de pago prefetched)
+try {
+    $result = Order_Processor::verifyPaymentAndProcess($order_code, $payment_id, 'webhook', $payment);
+} catch (\Throwable $e) {
+    // Error temporal interno de base de datos o sistema: responder 503 para permitir reintento
+    log_audit('WEBHOOK_SERVER_ERROR', "Excepción interna procesando orden {$order_code}: " . $e->getMessage());
+    http_response_code(503);
+    echo "Temporary server error, retry later";
+    exit;
+}
+
+// 6. Evaluación rigurosa del resultado de procesamiento
+if (!empty($result['success'])) {
+    http_response_code(200);
+    echo "OK: Procesado con éxito";
+    exit;
+}
+
+if (!empty($result['status_updated'])) {
+    http_response_code(200);
+    echo "OK: Estado de pago actualizado a " . $result['status_updated'];
+    exit;
+}
+
+if (!empty($result['is_temporary'])) {
+    // Fallo temporal interno o upstream: responder 503 para reintento automático de Mercado Pago
+    log_audit('WEBHOOK_TEMP_ERROR', "Fallo temporal procesando orden {$order_code} con pago {$payment_id}: " . ($result['error'] ?? ''));
+    http_response_code(503);
+    echo "Temporary processing error, retry later";
+    exit;
+}
+
+// Fallo de validación definitivo (ej. estado no aprobado, moneda ajena, importe discordante):
+// Respondemos 200 confirmando recepción para evitar bucles de reintentos infinitos sin sentido.
+log_audit('WEBHOOK_NON_RETRYABLE', "Notificación procesada sin despacho (definitivo no reintentable) para orden {$order_code}: " . ($result['error'] ?? ''));
 http_response_code(200);
-echo "OK";
+echo "OK: " . ($result['error'] ?? 'Completado');

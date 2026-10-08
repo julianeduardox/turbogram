@@ -20,11 +20,16 @@ scratch/
 .env
 config/database.php
 config/database.local.php
+config/2fa.key
+*.key
 
 # Bases de datos y Schemas
 *.sql
 
 # Archivos comprimidos
 *.zip
+turbogram-entrega-segura.zip
+backups/
+scripts/
 
 

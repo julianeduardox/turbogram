@@ -2,3 +2,5 @@
 database.php
 database.local.php
 *.local.php
+2fa.key
+*.key

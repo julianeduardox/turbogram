@@ -92,7 +92,7 @@ class GenericSMM_API {
                 ");
 
                 $url = Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
-                $key = Settings::get('provider_api_key', '4ca3f76aaaa9eee0be6bfef255c072f8');
+                $key = Settings::get('provider_api_key', '');
                 $pdo->prepare("INSERT INTO providers (id, name, api_url, api_key, is_default, status) VALUES (1, 'SolydSMM', ?, ?, 1, 1)")
                     ->execute([$url, $key]);
             }
@@ -170,51 +170,104 @@ class GenericSMM_API {
     }
 
     /**
+     * Determina si un mensaje de error del proveedor constituye un rechazo definitivo
+     * e irrecuperable por parámetros inválidos (cuenta privada, enlace inválido, etc.)
+     */
+    public static function isDefinitiveProviderRejection(string $errorMessage): bool {
+        $msg = mb_strtolower(trim($errorMessage), 'UTF-8');
+
+        // Errores temporales o de infraestructura NUNCA son definitivos
+        $ambiguousKeywords = [
+            'try again', 'temporary', 'maintenance', 'server', 'database', 
+            'internal', 'timeout', 'busy', 'unavailable', 'rate limit',
+            'too many', 'connection', 'network', 'later', 'fail'
+        ];
+        foreach ($ambiguousKeywords as $amb) {
+            if (str_contains($msg, $amb)) {
+                return false;
+            }
+        }
+
+        // Errores definitivos conocidos de parámetros
+        $definitiveKeywords = [
+            'bad link', 'invalid link', 'incorrect link', 'link is private', 
+            'private profile', 'private account', 'not found', 'does not exist',
+            'quantity must', 'min quantity', 'max quantity', 'invalid quantity',
+            'service is disabled', 'service disabled', 'service inactive',
+            'invalid service', 'service not found', 'link already exists',
+            'enlace invalido', 'enlace privado', 'cuenta privada'
+        ];
+        foreach ($definitiveKeywords as $def) {
+            if (str_contains($msg, $def)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Realiza una petición cURL a la API del proveedor
      */
     private function request(array $params): array {
         if (empty($this->api_url) || empty($this->api_key)) {
             return [
-                'success' => false,
-                'error'   => 'URL o API Key del proveedor no configuradas'
+                'success'      => false,
+                'error'        => 'URL o API Key del proveedor no configuradas',
+                'http_code'    => 0,
+                'is_ambiguous' => true,
+                'raw'          => null
             ];
         }
 
         $params['key'] = $this->api_key;
-
-        $is_localhost = in_array($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1', ['127.0.0.1', '::1']) || in_array($_SERVER['HTTP_HOST'] ?? 'localhost', ['localhost', '127.0.0.1']);
-        $ssl_verify = !$is_localhost;
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->api_url);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $ssl_verify);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $ssl_verify ? 2 : 0);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TurbogramBot/2.0');
 
         $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errno = curl_errno($ch);
         $error = curl_error($ch);
         curl_close($ch);
 
         if ($error) {
-            return ['success' => false, 'error' => 'Error de conexión cURL: ' . $error];
+            $is_timeout = in_array($errno, [CURLE_OPERATION_TIMEDOUT, CURLE_COULDNT_CONNECT, CURLE_COULDNT_RESOLVE_HOST], true);
+            return [
+                'success'      => false,
+                'error'        => 'Error de conexión cURL (' . $errno . '): ' . $error,
+                'is_timeout'   => $is_timeout,
+                'is_ambiguous' => true,
+                'http_code'    => $http_code,
+                'raw'          => null
+            ];
         }
 
         $decoded = json_decode($response, true);
         if ($decoded === null) {
             return [
-                'success'   => false,
-                'error'     => 'Respuesta no válida del proveedor (HTTP ' . $http_code . '): ' . substr($response, 0, 200),
-                'raw'       => $response,
-                'http_code' => $http_code
+                'success'      => false,
+                'error'        => 'Respuesta no válida del proveedor (HTTP ' . $http_code . '): ' . substr($response, 0, 200),
+                'raw'          => $response,
+                'is_timeout'   => ($http_code >= 500),
+                'is_ambiguous' => true,
+                'http_code'    => $http_code
             ];
         }
 
-        return ['success' => true, 'data' => $decoded, 'http_code' => $http_code];
+        return [
+            'success'   => true,
+            'data'      => $decoded,
+            'http_code' => $http_code,
+            'raw'       => $response
+        ];
     }
 
     /**
@@ -244,13 +297,18 @@ class GenericSMM_API {
             }
 
             return [
-                'success'  => true,
-                'balance'  => $balance,
-                'currency' => $currency
+                'success'   => true,
+                'balance'   => $balance,
+                'currency'  => $currency,
+                'http_code' => $res['http_code'] ?? 200
             ];
         }
 
-        return ['success' => false, 'error' => $res['data']['error'] ?? 'No se pudo obtener el saldo'];
+        return [
+            'success'   => false, 
+            'error'     => $res['data']['error'] ?? 'No se pudo obtener el saldo',
+            'http_code' => $res['http_code'] ?? 200
+        ];
     }
 
     /**
@@ -260,11 +318,15 @@ class GenericSMM_API {
         $res = $this->request(['action' => 'services']);
         if (!$res['success']) return $res;
 
-        return ['success' => true, 'services' => $res['data']];
+        return ['success' => true, 'services' => $res['data'], 'http_code' => $res['http_code'] ?? 200];
     }
 
     /**
      * Envia una nueva orden al proveedor
+     * Clasificación estricta:
+     * - HTTP 200 + 'order' numérico > 0: ACEPTADA ('sent')
+     * - HTTP 200 + 'error' definitivo conocido: RECHAZO DEFINITIVO ('error')
+     * - Cualquier otro resultado: AMBIGUO ('review')
      */
     public function addOrder(int $service_id, string $link, int $quantity): array {
         $res = $this->request([
@@ -274,22 +336,65 @@ class GenericSMM_API {
             'quantity' => $quantity
         ]);
 
-        if (!$res['success']) return $res;
+        $http_code = (int)($res['http_code'] ?? 0);
+        $raw = $res['raw'] ?? (isset($res['data']) ? json_encode($res['data']) : null);
 
-        if (isset($res['data']['order'])) {
+        if (!$res['success']) {
             return [
-                'success'     => true,
-                'order_id'    => (int)$res['data']['order'],
-                'provider_id' => $this->provider_id,
-                'raw'         => json_encode($res['data'])
+                'success'                 => false,
+                'provider_id'             => $this->provider_id,
+                'error'                   => $res['error'] ?? 'Error de conexión con proveedor',
+                'is_timeout'              => !empty($res['is_timeout']),
+                'is_ambiguous'            => true,
+                'is_definitive_rejection' => false,
+                'http_code'               => $http_code,
+                'raw'                     => $raw
             ];
         }
 
+        $data = $res['data'] ?? [];
+
+        // 1. ACEPTACIÓN CONFIRMADA: Exige HTTP 200 y número de orden numérico positivo
+        if ($http_code === 200 && isset($data['order']) && is_numeric($data['order']) && (int)$data['order'] > 0) {
+            return [
+                'success'                 => true,
+                'order_id'                => (int)$data['order'],
+                'provider_id'             => $this->provider_id,
+                'is_definitive_rejection' => false,
+                'is_ambiguous'            => false,
+                'http_code'               => $http_code,
+                'raw'                     => $raw
+            ];
+        }
+
+        // 2. RECHAZO DEFINITIVO CONFIRMADO: Exige HTTP 200 y error inequívoco de validación/parámetros
+        $errorMsg = is_string($data['error'] ?? null) ? trim($data['error']) : '';
+        if ($http_code === 200 && $errorMsg !== '' && self::isDefinitiveProviderRejection($errorMsg)) {
+            return [
+                'success'                 => false,
+                'provider_id'             => $this->provider_id,
+                'error'                   => $errorMsg,
+                'is_definitive_rejection' => true,
+                'is_ambiguous'            => false,
+                'http_code'               => $http_code,
+                'raw'                     => $raw
+            ];
+        }
+
+        // 3. CUALQUIER OTRO RESULTADO:
+        // - Respuesta con HTTP 200 pero cuerpo inválido o estructura inesperada
+        // - HTTP distinto de 200
+        // - Errores genéricos o temporales
+        // - Ausencia de confirmación inequívoca
+        // DEBE considerarse AMBIGUO y pasar a 'review' (sin reintentos automáticos)
         return [
-            'success'     => false,
-            'provider_id' => $this->provider_id,
-            'error'       => $res['data']['error'] ?? 'El proveedor rechazó la orden sin detalle',
-            'raw'         => json_encode($res['data'])
+            'success'                 => false,
+            'provider_id'             => $this->provider_id,
+            'error'                   => $errorMsg !== '' ? $errorMsg : ('Respuesta ambigua del proveedor sin confirmación de estado (HTTP ' . $http_code . ')'),
+            'is_definitive_rejection' => false,
+            'is_ambiguous'            => true,
+            'http_code'               => $http_code,
+            'raw'                     => $raw
         ];
     }
 
@@ -302,8 +407,22 @@ class GenericSMM_API {
             'order'  => $provider_order_id
         ]);
 
-        if (!$res['success']) return $res;
+        $http_code = (int)($res['http_code'] ?? 0);
+        if (!$res['success']) {
+            return [
+                'success'      => false,
+                'error'        => $res['error'] ?? 'Error al consultar estado',
+                'http_code'    => $http_code,
+                'is_ambiguous' => true,
+                'raw'          => $res['raw'] ?? null
+            ];
+        }
 
-        return ['success' => true, 'status_data' => $res['data']];
+        return [
+            'success'     => true,
+            'status_data' => $res['data'],
+            'http_code'   => $http_code,
+            'raw'         => $res['raw'] ?? json_encode($res['data'])
+        ];
     }
 }

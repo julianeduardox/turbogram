@@ -10,6 +10,7 @@ require_once __DIR__ . '/config/security.php';
 require_once __DIR__ . '/includes/GenericSMM_API.php';
 require_once __DIR__ . '/includes/SolydSMM_API.php';
 require_once __DIR__ . '/includes/MercadoPago_Service.php';
+require_once __DIR__ . '/includes/Order_Processor.php';
 
 $order_code = clean_input($_GET['code'] ?? ($_GET['external_reference'] ?? ($_POST['order_code'] ?? '')));
 $order = null;
@@ -17,80 +18,37 @@ $error_msg = null;
 
 $pdo = Database::getConnection();
 
-// 1. Soporte para Retorno Real de Mercado Pago (cuando redirige con payment_id y status=approved)
+// 1. Soporte para Retorno Real de Mercado Pago (validación y despacho centralizados)
 $returned_payment_id = clean_input($_GET['payment_id'] ?? ($_GET['collection_id'] ?? ''));
-$returned_status = clean_input($_GET['status'] ?? ($_GET['collection_status'] ?? ''));
 
 if ($order_code && !empty($returned_payment_id) && empty($_GET['simulate_pay'])) {
-    $stmtFind = $pdo->prepare("
-        SELECT o.*, s.provider_service_id, s.provider_id as service_provider_id 
-        FROM orders o 
-        JOIN services s ON o.service_id = s.id 
-        WHERE o.order_code = ?
-    ");
-    $stmtFind->execute([$order_code]);
-    $currentOrder = $stmtFind->fetch();
-
-    if ($currentOrder && $currentOrder['mp_status'] !== 'approved') {
-        // Verificar estado con API de Mercado Pago o con el parámetro approved
-        $mpService = new MercadoPago_Service();
-        $mpPayment = $mpService->getPayment($returned_payment_id);
-
-        $isApproved = ($mpPayment['success'] && $mpPayment['status'] === 'approved') || ($returned_status === 'approved');
-
-        if ($isApproved) {
-            $pdo->prepare("UPDATE orders SET mp_status = 'approved', mp_payment_id = ? WHERE id = ?")
-                ->execute([$returned_payment_id, $currentOrder['id']]);
-            log_audit('PAYMENT_APPROVED_RETURN', 'Pago aprobado al retornar de MP para orden: ' . $order_code);
-
-            // Si aún no se envió al proveedor
-            if (in_array($currentOrder['provider_status'], ['pending_send', 'error'])) {
-                $providerId = (int)($currentOrder['provider_id'] ?: $currentOrder['service_provider_id'] ?: 1);
-                $api = new GenericSMM_API($providerId);
-                $sendRes = $api->addOrder((int)$currentOrder['provider_service_id'], $currentOrder['target_link'], (int)$currentOrder['quantity']);
-
-                $provName = $api->getProviderName() ?: 'Proveedor';
-
-                if ($sendRes['success']) {
-                    $pdo->prepare("UPDATE orders SET provider_id = ?, provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL WHERE id = ?")
-                        ->execute([$providerId, $sendRes['order_id'], $sendRes['raw'], $currentOrder['id']]);
-                    log_audit('PROVIDER_ORDER_SENT', 'Orden ' . $order_code . ' enviada con éxito a ' . $provName . ' tras redirección.');
-                } else {
-                    $pdo->prepare("UPDATE orders SET provider_id = ?, provider_status = 'error', error_message = ?, provider_response = ? WHERE id = ?")
-                        ->execute([$providerId, $sendRes['error'], $sendRes['raw'] ?? null, $currentOrder['id']]);
-                    log_audit('PROVIDER_ORDER_FAILED', 'Error al enviar orden ' . $order_code . ' a ' . $provName . ' tras redirección: ' . $sendRes['error']);
-                }
-            }
-        }
-    }
+    Order_Processor::verifyPaymentAndProcess($order_code, $returned_payment_id, 'user_return');
 }
 
-// 2. Soporte para Simulación de Pago en Entorno Local
-if ($order_code && isset($_GET['simulate_pay']) && $_GET['simulate_pay'] == '1') {
-    $stmtFind = $pdo->prepare("
-        SELECT o.*, s.provider_service_id, s.provider_id as service_provider_id 
-        FROM orders o 
-        JOIN services s ON o.service_id = s.id 
-        WHERE o.order_code = ?
-    ");
-    $stmtFind->execute([$order_code]);
-    $simOrder = $stmtFind->fetch();
+// 2. Simulación de Pago Segura (Exclusiva de desarrollo explícito; fail-closed absoluto en producción)
+if (isset($_GET['simulate_pay']) && $_GET['simulate_pay'] == '1') {
+    if (getenv('APP_ENV') !== 'development') {
+        if (function_exists('log_audit')) {
+            log_audit('SIMULATION_PAY_BLOCKED', 'Intento no autorizado de simulación de pago en entorno no-desarrollo para orden: ' . ($order_code ?: 'N/A'));
+        }
+    } elseif (!empty($order_code)) {
+        $stmtFind = $pdo->prepare("SELECT id, mp_status FROM orders WHERE order_code = ?");
+        $stmtFind->execute([$order_code]);
+        $simOrder = $stmtFind->fetch();
 
-    if ($simOrder && $simOrder['mp_status'] !== 'approved') {
-        // Marcar como aprobado simulado
-        $pdo->prepare("UPDATE orders SET mp_status = 'approved', mp_payment_id = 'SIMULATED-LOCAL-PAY' WHERE id = ?")->execute([$simOrder['id']]);
-
-        // Intentar enviar al proveedor
-        $providerId = (int)($simOrder['provider_id'] ?: $simOrder['service_provider_id'] ?: 1);
-        $api = new GenericSMM_API($providerId);
-        $sendRes = $api->addOrder((int)$simOrder['provider_service_id'], $simOrder['target_link'], (int)$simOrder['quantity']);
-
-        if ($sendRes['success']) {
-            $pdo->prepare("UPDATE orders SET provider_id = ?, provider_order_id = ?, provider_status = 'sent', provider_response = ?, error_message = NULL WHERE id = ?")
-                ->execute([$providerId, $sendRes['order_id'], $sendRes['raw'], $simOrder['id']]);
-        } else {
-            $pdo->prepare("UPDATE orders SET provider_id = ?, provider_status = 'error', error_message = ?, provider_response = ? WHERE id = ?")
-                ->execute([$providerId, $sendRes['error'], $sendRes['raw'] ?? null, $simOrder['id']]);
+        if ($simOrder && $simOrder['mp_status'] !== 'approved') {
+            $pdo->prepare("
+                UPDATE orders 
+                SET mp_status = 'approved', 
+                    mp_payment_id = 'SIMULATED-DEV-TEST', 
+                    provider_status = 'completed', 
+                    provider_order_id = 999999, 
+                    provider_response = 'Prueba local simulada sin despacho a proveedores reales' 
+                WHERE id = ?
+            ")->execute([$simOrder['id']]);
+            if (function_exists('log_audit')) {
+                log_audit('SIMULATION_DEV_PAY', 'Simulación de prueba ejecutada en entorno local para: ' . $order_code);
+            }
         }
     }
 }
@@ -211,6 +169,10 @@ require_once __DIR__ . '/includes/header.php';
                                 <i class="fa-solid fa-spinner fa-spin" style="color: var(--primary-light);"></i> En ejecución por el sistema
                             <?php elseif ($order['provider_status'] === 'completed'): ?>
                                 <i class="fa-solid fa-circle-check" style="color: #22c55e;"></i> Completado con éxito
+                            <?php elseif ($order['provider_status'] === 'processing'): ?>
+                                <i class="fa-solid fa-gear fa-spin" style="color: var(--accent-cyan);"></i> Procesando envío...
+                            <?php elseif ($order['provider_status'] === 'review'): ?>
+                                <i class="fa-solid fa-clock-rotate-left" style="color: #38bdf8;"></i> En verificación de entrega
                             <?php elseif ($order['provider_status'] === 'error'): ?>
                                 <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i> En revisión técnica
                             <?php else: ?>

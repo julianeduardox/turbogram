@@ -281,6 +281,7 @@ if (isset($_GET['edit'])) {
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
             <li><a href="providers.php" class="active"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php"><i class="fa-solid fa-sliders"></i> Mercado Pago y Ajustes</a></li>
+            <li><a href="security.php"><i class="fa-solid fa-shield-halved"></i> Seguridad y 2FA</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
     </aside>

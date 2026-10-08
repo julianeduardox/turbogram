@@ -27,7 +27,8 @@ class Database {
             try {
                 self::$instance = new PDO($dsn, DB_USER, DB_PASS, $options);
             } catch (PDOException $e) {
-                die("Error de conexión a la base de datos: " . $e->getMessage());
+                error_log('Turbogram: database connection failed.');
+                throw new RuntimeException('Service temporarily unavailable.');
             }
         }
         return self::$instance;

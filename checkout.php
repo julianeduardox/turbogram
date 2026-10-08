@@ -111,14 +111,9 @@ $stmtInsert->execute([
 
 // 7. Generar Preferencia de Pago en Mercado Pago
 $mpService = new MercadoPago_Service();
-$itemTitle = 'Turbogram: ' . $service['name'] . ' (x' . number_format($quantity, 0, ',', '.') . ')';
-if ($coupon_code) {
-    $itemTitle .= " [Cupón: {$coupon_code}]";
-}
-
 $orderData = [
     'order_code'   => $order_code,
-    'service_name' => $itemTitle,
+    'service_name' => $service['name'],
     'quantity'     => $quantity,
     'total_price'  => $total_price,
     'buyer_email'  => $buyer_email,

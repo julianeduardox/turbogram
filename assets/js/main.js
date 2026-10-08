@@ -262,7 +262,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     couponFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
                     couponFeedback.style.border = '1px solid rgba(239, 68, 68, 0.4)';
                     couponFeedback.style.color = '#fca5a5';
-                    couponFeedback.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Requiere compra mínima de ${formatMoney(minReq)}.`;
+                    couponFeedback.textContent = '';
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-triangle-exclamation';
+                    couponFeedback.appendChild(icon);
+                    couponFeedback.appendChild(document.createTextNode(` Requiere compra mínima de ${formatMoney(minReq)}.`));
                 }
                 discountAmount = 0;
                 finalPrice = originalPrice;
@@ -285,7 +289,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     const discountText = appliedCoupon.discount_type === 'percentage' 
                         ? `${appliedCoupon.discount_value}% OFF` 
                         : `${formatMoney(discountAmount)} OFF`;
-                    couponFeedback.innerHTML = `<i class="fa-solid fa-circle-check"></i> ¡Cupón <strong>${appliedCoupon.code}</strong> aplicado! Ahorrás ${formatMoney(discountAmount)} (${discountText})`;
+                    couponFeedback.textContent = '';
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-circle-check';
+                    couponFeedback.appendChild(icon);
+                    couponFeedback.appendChild(document.createTextNode(' ¡Cupón '));
+                    const strong = document.createElement('strong');
+                    strong.textContent = appliedCoupon.code;
+                    couponFeedback.appendChild(strong);
+                    couponFeedback.appendChild(document.createTextNode(` aplicado! Ahorrás ${formatMoney(discountAmount)} (${discountText})`));
                 }
             }
         }
@@ -309,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const badgeText = appliedCoupon.discount_type === 'percentage' 
                     ? `🔥 Ahorrás ${formatMoney(discountAmount)} (${appliedCoupon.discount_value}% OFF)`
                     : `🔥 Ahorrás ${formatMoney(discountAmount)}`;
-                discountTag.innerHTML = badgeText;
+                discountTag.textContent = badgeText;
                 discountTag.style.display = 'inline-flex';
             }
             if (summaryDiscountRow) {
@@ -357,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => {
             if (btnApplyCoupon) {
                 btnApplyCoupon.disabled = false;
-                btnApplyCoupon.innerHTML = 'Aplicar';
+                btnApplyCoupon.textContent = 'Aplicar';
             }
 
             if (data.success) {
@@ -376,7 +388,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     couponFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
                     couponFeedback.style.border = '1px solid rgba(239, 68, 68, 0.4)';
                     couponFeedback.style.color = '#fca5a5';
-                    couponFeedback.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${data.error}`;
+                    couponFeedback.textContent = '';
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-solid fa-circle-xmark';
+                    couponFeedback.appendChild(icon);
+                    couponFeedback.appendChild(document.createTextNode(' ' + (data.error || 'Cupón inválido')));
                 }
                 if (couponAppliedStatus) couponAppliedStatus.style.display = 'none';
                 if (btnRemoveCoupon) btnRemoveCoupon.style.display = 'none';
@@ -388,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(err => {
             if (btnApplyCoupon) {
                 btnApplyCoupon.disabled = false;
-                btnApplyCoupon.innerHTML = 'Aplicar';
+                btnApplyCoupon.textContent = 'Aplicar';
             }
             alert('Error al validar el cupón. Intentá nuevamente.');
         });

@@ -13,36 +13,69 @@ $message = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_settings') {
     if (verify_csrf_token($_POST['csrf_token'] ?? '')) {
         
-        // Mercado Pago
-        Settings::set('mp_access_token', trim($_POST['mp_access_token'] ?? ''));
+        // Mercado Pago (Preservar credenciales existentes si se envían vacías o enmascaradas)
+        $rawMpToken = trim($_POST['mp_access_token'] ?? '');
+        if ($rawMpToken !== '' && !str_starts_with($rawMpToken, '••••')) {
+            Settings::set('mp_access_token', $rawMpToken);
+        }
+
         Settings::set('mp_public_key', trim($_POST['mp_public_key'] ?? ''));
+
+        $rawWhSecret = trim($_POST['mp_webhook_secret'] ?? '');
+        if ($rawWhSecret !== '' && !str_starts_with($rawWhSecret, '••••')) {
+            Settings::set('mp_webhook_secret', $rawWhSecret);
+        }
+
         Settings::set('mp_sandbox', isset($_POST['mp_sandbox']) ? '1' : '0');
 
         // Proveedor API Predeterminado
         $newProvUrl = trim($_POST['provider_api_url'] ?? 'https://solydsmm.com/api/v2');
-        $newProvKey = trim($_POST['provider_api_key'] ?? '');
+        $rawProvKey = trim($_POST['provider_api_key'] ?? '');
         Settings::set('provider_api_url', $newProvUrl);
-        Settings::set('provider_api_key', $newProvKey);
 
-        // Sincronizar con el proveedor predeterminado en la tabla providers
-        try {
-            $pdo = Database::getConnection();
-            $stmtDef = $pdo->query("SELECT id FROM providers WHERE is_default = 1 LIMIT 1");
-            $defId = $stmtDef->fetchColumn();
-            if ($defId) {
-                $stmtUpdProv = $pdo->prepare("UPDATE providers SET api_url = ?, api_key = ? WHERE id = ?");
-                $stmtUpdProv->execute([$newProvUrl, $newProvKey, $defId]);
+        if ($rawProvKey !== '' && !str_starts_with($rawProvKey, '••••')) {
+            Settings::set('provider_api_key', $rawProvKey);
+            // Sincronizar con el proveedor predeterminado en la tabla providers
+            try {
+                $pdo = Database::getConnection();
+                $stmtDef = $pdo->query("SELECT id FROM providers WHERE is_default = 1 LIMIT 1");
+                $defId = $stmtDef->fetchColumn();
+                if ($defId) {
+                    $stmtUpdProv = $pdo->prepare("UPDATE providers SET api_url = ?, api_key = ? WHERE id = ?");
+                    $stmtUpdProv->execute([$newProvUrl, $rawProvKey, $defId]);
+                }
+            } catch (Exception $e) {
+                // Silencioso
             }
-        } catch (Exception $e) {
-            // Silencioso
+        } else {
+            // Actualizar únicamente la URL conservando la clave existente
+            try {
+                $pdo = Database::getConnection();
+                $stmtDef = $pdo->query("SELECT id FROM providers WHERE is_default = 1 LIMIT 1");
+                $defId = $stmtDef->fetchColumn();
+                if ($defId) {
+                    $stmtUpdProv = $pdo->prepare("UPDATE providers SET api_url = ? WHERE id = ?");
+                    $stmtUpdProv->execute([$newProvUrl, $defId]);
+                }
+            } catch (Exception $e) {
+                // Silencioso
+            }
         }
 
         // Generales
         Settings::set('site_name', trim($_POST['site_name'] ?? 'Turbogram'));
         Settings::set('site_tagline', trim($_POST['site_tagline'] ?? ''));
+        $siteBaseUrl = rtrim(trim($_POST['site_base_url'] ?? ''), '/');
+        if ($siteBaseUrl !== '' && !filter_var($siteBaseUrl, FILTER_VALIDATE_URL)) {
+            $message = 'La URL pública no es válida.';
+        } else {
+            Settings::set('site_base_url', $siteBaseUrl);
+        }
         Settings::set('whatsapp_number', trim($_POST['whatsapp_number'] ?? ''));
 
-        $message = "Configuraciones guardadas correctamente.";
+        if ($message === '') {
+            $message = "Configuraciones guardadas correctamente.";
+        }
         log_audit('SAVE_SETTINGS', 'Actualización de credenciales y configuraciones generales del sitio.');
     }
 }
@@ -52,13 +85,15 @@ $pdo = Database::getConnection();
 $stmtDefProv = $pdo->query("SELECT * FROM providers WHERE is_default = 1 LIMIT 1");
 $defaultProvider = $stmtDefProv->fetch();
 
-$mp_access_token = Settings::get('mp_access_token', '');
-$mp_public_key   = Settings::get('mp_public_key', '');
-$mp_sandbox      = Settings::get('mp_sandbox', '1');
+$mp_access_token   = Settings::get('mp_access_token', '');
+$mp_public_key      = Settings::get('mp_public_key', '');
+$mp_webhook_secret  = Settings::get('mp_webhook_secret', '');
+$mp_sandbox         = Settings::get('mp_sandbox', '1');
 $provider_url    = $defaultProvider['api_url'] ?? Settings::get('provider_api_url', 'https://solydsmm.com/api/v2');
 $provider_key    = $defaultProvider['api_key'] ?? Settings::get('provider_api_key', '');
 $site_name       = Settings::get('site_name', 'Turbogram');
 $site_tagline    = Settings::get('site_tagline', 'Impulsá tus redes sociales en segundos');
+$site_base_url   = Settings::get('site_base_url', '');
 $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
 ?>
 <!DOCTYPE html>
@@ -90,6 +125,7 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
             <li><a href="promotions.php"><i class="fa-solid fa-tags"></i> Ofertas y Cupones</a></li>
             <li><a href="providers.php"><i class="fa-solid fa-server"></i> Proveedores SMM</a></li>
             <li><a href="settings.php" class="active"><i class="fa-solid fa-sliders"></i> Mercado Pago y API</a></li>
+            <li><a href="security.php"><i class="fa-solid fa-shield-halved"></i> Seguridad y 2FA</a></li>
             <li style="margin-top: auto;"><a href="logout.php" style="color: #fca5a5;"><i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión</a></li>
         </ul>
     </aside>
@@ -119,14 +155,30 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
                 </h3>
 
                 <div style="margin-bottom: 1.25rem;">
-                    <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Access Token (Producción o Pruebas)</label>
-                    <input type="password" name="mp_access_token" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="<?= htmlspecialchars($mp_access_token) ?>" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxxxxxxxx">
-                    <small style="color: var(--admin-muted); font-size: 0.75rem;">Se obtiene en Developers Mercado Pago &gt; Tus Integraciones &gt; Credenciales de producción.</small>
+                    <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">
+                        Access Token (Producción o Pruebas)
+                        <?php if (!empty($mp_access_token)): ?>
+                            <span style="display: inline-block; margin-left: 0.5rem; background: rgba(34, 197, 94, 0.2); color: #4ade80; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Configurado</span>
+                        <?php endif; ?>
+                    </label>
+                    <input type="password" name="mp_access_token" autocomplete="new-password" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="" placeholder="<?= !empty($mp_access_token) ? '•••••••••••••••• (Configurado - dejar vacío para conservar)' : 'APP_USR-xxxxxxxxxxxxxxxxxxxxxxxxxx' ?>">
+                    <small style="color: var(--admin-muted); font-size: 0.75rem;">Se obtiene en Developers Mercado Pago &gt; Tus Integraciones &gt; Credenciales. Se mantiene resguardado y oculto.</small>
                 </div>
 
                 <div style="margin-bottom: 1.25rem;">
                     <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Public Key</label>
                     <input type="text" name="mp_public_key" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="<?= htmlspecialchars($mp_public_key) ?>" placeholder="APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                </div>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">
+                        Secret Key del Webhook (Firma HMAC-SHA256)
+                        <?php if (!empty($mp_webhook_secret)): ?>
+                            <span style="display: inline-block; margin-left: 0.5rem; background: rgba(34, 197, 94, 0.2); color: #4ade80; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Configurado</span>
+                        <?php endif; ?>
+                    </label>
+                    <input type="password" name="mp_webhook_secret" autocomplete="new-password" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="" placeholder="<?= !empty($mp_webhook_secret) ? '•••••••••••••••• (Configurado - dejar vacío para conservar)' : 'Clave secreta configurada en Webhooks' ?>">
+                    <small style="color: var(--admin-muted); font-size: 0.75rem;">Se obtiene en Developers Mercado Pago &gt; Notificaciones Webhook &gt; Clave Secreta. Protegido contra exposición en HTML.</small>
                 </div>
 
                 <label style="color: #fff; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
@@ -156,8 +208,13 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
                 </div>
 
                 <div>
-                    <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">API Key del Proveedor</label>
-                    <input type="password" name="provider_api_key" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="<?= htmlspecialchars($provider_key) ?>" required>
+                    <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">
+                        API Key del Proveedor
+                        <?php if (!empty($provider_key)): ?>
+                            <span style="display: inline-block; margin-left: 0.5rem; background: rgba(34, 197, 94, 0.2); color: #4ade80; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Configurado</span>
+                        <?php endif; ?>
+                    </label>
+                    <input type="password" name="provider_api_key" autocomplete="new-password" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff; font-family: monospace;" value="" placeholder="<?= !empty($provider_key) ? '•••••••••••••••• (Configurado - dejar vacío para conservar)' : 'API Key del proveedor' ?>">
                 </div>
             </div>
 
@@ -171,6 +228,12 @@ $whatsapp_num    = Settings::get('whatsapp_number', '5492364321999');
                     <div>
                         <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">Nombre del Sitio</label>
                         <input type="text" name="site_name" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= htmlspecialchars($site_name) ?>" required>
+                    </div>
+
+                    <div>
+                        <label style="display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 0.3rem; font-weight: 600;">URL pública segura</label>
+                        <input type="url" name="site_base_url" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--admin-border); border-radius: 8px; padding: 0.75rem; color: #fff;" value="<?= htmlspecialchars($site_base_url) ?>" placeholder="https://ejemplo.com" required>
+                        <small style="color: var(--admin-muted); font-size: 0.75rem;">Usada para retornos y notificaciones de pago. Debe usar HTTPS.</small>
                     </div>
 
                     <div>

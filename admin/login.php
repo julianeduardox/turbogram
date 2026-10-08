@@ -2,19 +2,31 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/settings.php';
 require_once __DIR__ . '/../config/security.php';
+require_once __DIR__ . '/../includes/TOTP_Service.php';
 
 $error = '';
+$info = '';
 $client_ip = function_exists('get_client_ip') ? get_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
+
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] === 'timeout') {
+        $info = 'Tu sesión ha expirado por inactividad. Por favor, iniciá sesión nuevamente.';
+    } elseif ($_GET['msg'] === 'max_lifetime') {
+        $info = 'Tu sesión ha expirado por superar la duración máxima permitida (8 horas). Iniciá sesión nuevamente.';
+    } elseif ($_GET['msg'] === 'logout') {
+        $info = 'Has cerrado sesión correctamente de forma segura.';
+    }
+}
 
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
     header('Location: index.php');
     exit;
 }
 
-// Rate Limiting seguro
+// Rate Limiting seguro por IP
 $rateLimit = function_exists('check_login_rate_limit') ? check_login_rate_limit($client_ip) : ['allowed' => true];
 if (!$rateLimit['allowed']) {
-    $error = $rateLimit['message'] ?? 'Acceso bloqueado temporalmente.';
+    $error = $rateLimit['message'] ?? 'Acceso bloqueado temporalmente por IP.';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $csrf = $_POST['csrf_token'] ?? '';
     if (function_exists('verify_csrf_token') && !verify_csrf_token($csrf)) {
@@ -23,38 +35,75 @@ if (!$rateLimit['allowed']) {
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
-        if ($username && $password) {
+        if ($username !== '' && $password !== '') {
             try {
                 $pdo = Database::getConnection();
                 $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
                 $stmt->execute([$username]);
                 $admin = $stmt->fetch();
 
-                if ($admin && password_verify($password, $admin['password'])) {
-                    if (function_exists('reset_login_rate_limit')) {
-                        reset_login_rate_limit($client_ip);
-                    }
+                if ($admin) {
+                    // Verificar si la cuenta específica está bloqueada
+                    $acctLock = TOTP_Service::checkAccountPasswordLockout($pdo, (int)$admin['id']);
+                    if ($acctLock['locked']) {
+                        $error = $acctLock['message'];
+                    } elseif (password_verify($password, $admin['password'])) {
+                        // Contraseña válida: resetear contadores de fallos
+                        if (function_exists('reset_login_rate_limit')) {
+                            reset_login_rate_limit($client_ip);
+                        }
+                        TOTP_Service::resetAccountPasswordLockout($pdo, (int)$admin['id']);
 
-                    if (session_status() === PHP_SESSION_ACTIVE) {
-                        session_regenerate_id(true);
-                    }
-                    $_SESSION['admin_logged_in'] = true;
-                    $_SESSION['admin_user'] = $admin['username'];
-                    $_SESSION['admin_id'] = $admin['id'];
+                        if (session_status() === PHP_SESSION_ACTIVE) {
+                            session_regenerate_id(true);
+                        }
 
-                    if (function_exists('log_audit')) {
-                        log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión de: ' . $admin['username']);
+                        // Comprobar si tiene doble factor (2FA) habilitado
+                        if (!empty($admin['totp_enabled'])) {
+                            // Estado intermedio para ingresar segundo factor
+                            $_SESSION['admin_2fa_pending'] = true;
+                            $_SESSION['admin_2fa_id'] = (int)$admin['id'];
+                            $_SESSION['admin_2fa_user'] = $admin['username'];
+                            $_SESSION['admin_2fa_expires'] = time() + 300; // 5 minutos de validez
+
+                            if (function_exists('log_audit')) {
+                                log_audit('ADMIN_LOGIN_PASSWORD_OK', 'Paso 1 contraseña verificado. Esperando 2FA para: ' . $admin['username']);
+                            }
+
+                            header('Location: login_2fa.php');
+                            exit;
+                        }
+
+                        // Sin 2FA: acceso completo
+                        $_SESSION['admin_logged_in'] = true;
+                        $_SESSION['admin_user'] = $admin['username'];
+                        $_SESSION['admin_id'] = $admin['id'];
+                        $_SESSION['login_time'] = time();
+                        $_SESSION['last_activity'] = time();
+
+                        if (function_exists('log_audit')) {
+                            log_audit('ADMIN_LOGIN_SUCCESS', 'Inicio de sesión de: ' . $admin['username']);
+                        }
+                        header('Location: index.php');
+                        exit;
+                    } else {
+                        // Contraseña incorrecta
+                        TOTP_Service::recordFailedPassword($pdo, (int)$admin['id']);
+                        if (function_exists('record_failed_login')) {
+                            record_failed_login($client_ip);
+                        }
+                        $error = 'Usuario o contraseña incorrectos.';
                     }
-                    header('Location: index.php');
-                    exit;
                 } else {
+                    // Usuario no encontrado
                     if (function_exists('record_failed_login')) {
                         record_failed_login($client_ip);
                     }
                     $error = 'Usuario o contraseña incorrectos.';
                 }
             } catch (\Throwable $e) {
-                $error = 'Error de base de datos: ' . $e->getMessage();
+                error_log('Turbogram: admin login database error.');
+                $error = 'No se pudo procesar el inicio de sesión. Intentá nuevamente más tarde.';
             }
         } else {
             $error = 'Ingresá tu usuario y contraseña.';
@@ -87,6 +136,12 @@ if (!$rateLimit['allowed']) {
             <h1 style="font-family: 'Outfit', sans-serif; font-size: 1.6rem; margin: 0;">Panel del Dueño</h1>
             <p style="color: var(--admin-muted); font-size: 0.875rem; margin-top: 0.25rem;">Turbogram Backoffice</p>
         </div>
+
+        <?php if ($info): ?>
+            <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 0.85rem; color: #7dd3fc; font-size: 0.9rem; margin-bottom: 1.5rem; text-align: center;">
+                <i class="fa-solid fa-circle-info"></i> <?= htmlspecialchars($info) ?>
+            </div>
+        <?php endif; ?>
 
         <?php if ($error): ?>
             <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 0.85rem; color: #fca5a5; font-size: 0.9rem; margin-bottom: 1.5rem; text-align: center;">
