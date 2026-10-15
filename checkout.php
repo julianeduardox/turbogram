@@ -129,6 +129,7 @@ if ($prefResult['success']) {
 
     // Redirigir al cliente a Mercado Pago
     header('Location: ' . $prefResult['checkout_url']);
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($prefResult['checkout_url']) . '"><title>Redirigiendo a Mercado Pago...</title></head><body style="background:#0b0f19;color:#fff;font-family:sans-serif;text-align:center;padding:3rem;"><p>Redirigiendo a Mercado Pago...</p><p>Si no te redirige automáticamente, <a href="' . htmlspecialchars($prefResult['checkout_url']) . '" style="color:#00e5ff;font-weight:bold;">hacé clic acá</a>.</p><script>window.location.href=' . json_encode($prefResult['checkout_url']) . ';</script></body></html>';
     exit;
 } else {
     // Si Mercado Pago no está configurado (ej: primer uso antes de colocar credenciales en el Panel)

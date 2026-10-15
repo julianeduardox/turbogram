@@ -579,6 +579,11 @@ document.addEventListener('DOMContentLoaded', function () {
             // Enviar formulario al backend
             HTMLFormElement.prototype.submit.call(orderForm);
         });
+
+        window.addEventListener('pageshow', function () {
+            btnConfirmPay.disabled = false;
+            btnConfirmPay.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Pagar en Mercado Pago';
+        });
     }
 
     // Botón cancelar / corregir datos

@@ -31,7 +31,7 @@ RewriteRule (^|/)\.git(?:/|$) - [F,L,NC]
 
     # Restringir permisos de hardware no necesarios
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Header always set Content-Security-Policy "base-uri 'self'; form-action 'self' https://www.mercadopago.com https://sandbox.mercadopago.com; frame-ancestors 'self'; object-src 'none'"
+    Header always set Content-Security-Policy "base-uri 'self'; form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.ar https://*.mercadopago.com.br https://*.mercadopago.com.mx https://*.mercadopago.com.co https://*.mercadopago.cl https://*.mercadopago.com.uy https://*.mercadopago.com.pe https://www.mercadopago.com https://www.mercadopago.com.ar https://mercadopago.com https://mercadopago.com.ar https://sandbox.mercadopago.com; frame-ancestors 'self'; object-src 'none'"
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
 
     # Ocultar cabeceras que delaten versión de PHP

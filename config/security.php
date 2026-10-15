@@ -28,7 +28,7 @@ if (!headers_sent()) {
     header("Referrer-Policy: strict-origin-when-cross-origin");
     header("X-XSS-Protection: 0");
     header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
-    header("Content-Security-Policy: base-uri 'self'; form-action 'self' https://www.mercadopago.com https://sandbox.mercadopago.com; frame-ancestors 'self'; object-src 'none'");
+    header("Content-Security-Policy: base-uri 'self'; form-action 'self' https://*.mercadopago.com https://*.mercadopago.com.ar https://*.mercadopago.com.br https://*.mercadopago.com.mx https://*.mercadopago.com.co https://*.mercadopago.cl https://*.mercadopago.com.uy https://*.mercadopago.com.pe https://www.mercadopago.com https://www.mercadopago.com.ar https://mercadopago.com https://mercadopago.com.ar https://sandbox.mercadopago.com; frame-ancestors 'self'; object-src 'none'");
     if ($is_https) {
         header("Strict-Transport-Security: max-age=31536000; includeSubDomains");
     }
